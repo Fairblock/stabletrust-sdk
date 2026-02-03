@@ -1,0 +1,28 @@
+{
+  "name": "confidential-transfer-proof-generation",
+  "type": "module",
+  "description": "Confidential transfer proof generation tool",
+  "version": "0.4.0",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Fairblock/he-confidential-transfers"
+  },
+  "files": [
+    "confidential_transfer_proof_generation_bg.wasm",
+    "confidential_transfer_proof_generation.js",
+    "confidential_transfer_proof_generation.d.ts"
+  ],
+  "main": "confidential_transfer_proof_generation.js",
+  "types": "confidential_transfer_proof_generation.d.ts",
+  "sideEffects": [
+    "./snippets/*"
+  ],
+  "keywords": [
+    "confidential",
+    "transfers",
+    "proofs",
+    "elgamal",
+    "cosmwasm"
+  ]
+}
