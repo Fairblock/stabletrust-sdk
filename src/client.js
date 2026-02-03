@@ -407,8 +407,7 @@ export class ConfidentialTransferClient {
           typeof derivedCurrentBalance === "bigint"
             ? derivedCurrentBalance.toString()
             : derivedCurrentBalance,
-        transfer_amount:
-          typeof amount === "bigint" ? amount.toString() : amount,
+        transfer_amount: typeof amount === "bigint" ? Number(amount) : amount,
         source_keypair: derivedSenderKeys.privateKey,
         destination_pubkey: derivedRecipientPublicKey,
       };
@@ -555,7 +554,6 @@ export class ConfidentialTransferClient {
       }
 
       const address = await wallet.getAddress();
-      console.log(typeof amount === "bigint" ? amount.toString() : amount);
 
       // Generate withdrawal proof
       const withdrawInput = {
@@ -567,9 +565,6 @@ export class ConfidentialTransferClient {
         withdraw_amount: typeof amount === "bigint" ? Number(amount) : amount,
         keypair: derivedKeys.privateKey,
       };
-
-      console.log("Starting generate_withdraw_proof");
-      console.log("withdrawInput:", JSON.stringify(withdrawInput, null, 2));
 
       const wasm = await this._getWasm();
       const proofResult = wasm.generate_withdraw_proof(
