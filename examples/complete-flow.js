@@ -79,7 +79,7 @@ async function main() {
     client.deposit(sender, TOKEN_ADDRESS, depositAmount),
   );
   // Fixed hash reference: checking for result.transactionHash or result.hash
-  const depHash = depRes.result?.transactionHash || depRes.result?.hash;
+  const depHash = depRes.result.hash;
   console.log(`Transaction Hash: ${depHash}`);
   console.log(`View Transaction: ${EXPLORER_URL}${depHash}`);
 
@@ -124,7 +124,7 @@ async function main() {
     client.transfer(sender, recipient.address, TOKEN_ADDRESS, transferAmount),
   );
 
-  const txHash = txRes.result?.transactionHash || txRes.result?.hash;
+  const txHash = txRes.result.hash;
   console.log(
     "Status: Privacy shielding active. Transfer amount is hidden on-chain.",
   );
@@ -169,7 +169,7 @@ async function main() {
   const applyRes = await trackPerformance("APPLY_PENDING", () =>
     client.applyPending(recipient),
   );
-  const applyHash = applyRes.result?.transactionHash || applyRes.result?.hash;
+  const applyHash = applyRes.result.hash;
   console.log(`Transaction Hash: ${applyHash}`);
   console.log(`View Transaction: ${EXPLORER_URL}${applyHash}`);
 
@@ -201,8 +201,7 @@ async function main() {
   const withdrawRes = await trackPerformance("WITHDRAW_TOKENS", () =>
     client.withdraw(recipient, TOKEN_ADDRESS, withdrawAmount),
   );
-  const withdrawHash =
-    withdrawRes.result?.transactionHash || withdrawRes.result?.hash;
+  const withdrawHash = withdrawRes.result.hash;
   console.log(`Transaction Hash: ${withdrawHash}`);
   console.log(`View Transaction: ${EXPLORER_URL}${withdrawHash}`);
 
