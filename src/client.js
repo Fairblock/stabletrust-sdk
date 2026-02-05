@@ -26,6 +26,7 @@ export class ConfidentialTransferClient {
    * @param {string} config.contractAddress - Confidential transfer contract address
    * @param {number} [config.chainId] - Chain ID (default: 421614)
    * @param {string} [config.explorerUrl] - Block explorer URL
+   * @param {string} [config.feeTokenAddress] - Fee token address (for chains like Tempo)
    */
   constructor(config) {
     // Validate required config
@@ -426,15 +427,104 @@ export class ConfidentialTransferClient {
 
       // Get fee and execute transfer
       const fee = await this.contract.feeAmount();
-      const tx = await this.contract
-        .connect(senderWallet)
-        .transferConfidential(
-          recipientAddress,
-          tokenAddress,
-          ethers.getBytes(encodeTransferProof(proof.data)),
-          useOffchainVerify,
-          { value: fee },
+      const feeTokenAddress = 
+        this.config.feeTokenAddress || 
+        process.env.FEE_TOKEN_ADDRESS;
+      
+      // Check if feeTokenAddress is configured - this indicates token-based fee payment
+      let tx;
+      if (feeTokenAddress) {
+        // Approve fee token for the contract
+        const feeTokenContract = this._getTokenContract(feeTokenAddress);
+        
+        // Check balance first
+        const feeTokenBalance = await feeTokenContract.balanceOf(senderAddress);
+        if (feeTokenBalance < fee) {
+          throw new Error(
+            `Insufficient fee token balance. Required: ${fee}, Available: ${feeTokenBalance}`
+          );
+        }
+        
+        const allowance = await feeTokenContract.allowance(
+          senderAddress,
+          this.config.contractAddress,
         );
+        
+        if (allowance < fee) {
+          const approveTx = await feeTokenContract
+            .connect(senderWallet)
+            .approve(this.config.contractAddress, ethers.MaxUint256);
+          
+          const approveReceipt = await approveTx.wait();
+          if (!approveReceipt || approveReceipt.status === 0) {
+            throw new Error("Fee token approval failed");
+          }
+        }
+        
+        // Try to estimate gas first to catch any revert reasons early
+        let gasLimit = 2_000_000n;
+        try {
+          const estimatedGas = await this.contract
+            .connect(senderWallet)
+            .transferConfidential.estimateGas(
+              recipientAddress,
+              tokenAddress,
+              ethers.getBytes(encodeTransferProof(proof.data)),
+              useOffchainVerify,
+              { value: 0 },
+            );
+          // Add 20% buffer to estimated gas
+          gasLimit = (estimatedGas * 120n) / 100n;
+        } catch (gasEstError) {
+          // If gas estimation fails, use default gas limit
+          console.warn(
+            `Gas estimation failed, using default gas limit: ${gasEstError?.message || String(gasEstError)}`
+          );
+        }
+        
+        tx = await this.contract
+          .connect(senderWallet)
+          .transferConfidential(
+            recipientAddress,
+            tokenAddress,
+            ethers.getBytes(encodeTransferProof(proof.data)),
+            useOffchainVerify,
+            { value: 0, gasLimit },
+          );
+      } else {
+        try {
+          tx = await this.contract
+            .connect(senderWallet)
+            .transferConfidential(
+              recipientAddress,
+              tokenAddress,
+              ethers.getBytes(encodeTransferProof(proof.data)),
+              useOffchainVerify,
+              { value: fee },
+            );
+        } catch (gasError) {
+          // If gas estimation fails, try with explicit gas limit
+          if (
+            gasError?.code === "CALL_EXCEPTION" ||
+            gasError?.code === "UNKNOWN_ERROR" ||
+            gasError?.message?.includes("estimateGas") ||
+            gasError?.message?.includes("missing revert data")
+          ) {
+            const gasLimit = 2_000_000n;
+            tx = await this.contract
+              .connect(senderWallet)
+              .transferConfidential(
+                recipientAddress,
+                tokenAddress,
+                ethers.getBytes(encodeTransferProof(proof.data)),
+                useOffchainVerify,
+                { value: fee, gasLimit },
+              );
+          } else {
+            throw gasError;
+          }
+        }
+      }
 
       const receipt = await tx.wait();
       if (!receipt || receipt.status === 0) {
