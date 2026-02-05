@@ -14,16 +14,15 @@ dotenv.config();
 // Currently configured for Arbitrum Sepolia confidential mirror contract.
 // You can deploy your own confidential contract on any EVM network and use that.
 const CONTRACT_ADDRESS =
-  process.env.CONTRACT_ADDRESS || "0x05ad3FF447930ad5B4085C07B4Ef9b10Aa0a58F2";
+  process.env.CONTRACT_ADDRESS || "0x5acE788EF0C9f7f902642001d639AD155fF29A6C";
 // Standard ERC20 token contract. Any ERC20 on this chain ID can be used.
 const TOKEN_ADDRESS =
-  process.env.TOKEN_ADDRESS || "0x036CbD53842c5426634e7929541eC2318f3dCF7e";
+  process.env.TOKEN_ADDRESS || "0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d";
 const RPC_URL =
-  process.env.ARBITRUM_RPC_URL ||
-  "https://base-sepolia.g.alchemy.com/v2/aWhH6EPG07A-ItRdWtiz63HyrMog6VYM";
+  process.env.ARBITRUM_RPC_URL || "https://sepolia-rollup.arbitrum.io/rpc";
 const EXPLORER_URL =
-  process.env.EXPLORER_URL || "https://sepolia.basescan.org/tx/";
-const CHAIN_ID = process.env.CHAIN_ID || 84532;
+  process.env.EXPLORER_URL || "https://sepolia.arbiscan.io/tx/";
+const CHAIN_ID = process.env.CHAIN_ID || 421614;
 
 /**
  * Performance Utility: Tracks execution time and provides timestamps
@@ -64,7 +63,7 @@ async function main() {
   const recipientKeys = await client.ensureAccount(recipient);
 
   // 1. DEPOSIT PHASE
-  const depositAmount = ethers.parseUnits("0.001", 6);
+  const depositAmount = ethers.parseUnits("0.1", 6);
   const senderAvailBeforeDep = await client.getBalance(
     sender.address,
     senderKeys.privateKey,
@@ -97,7 +96,7 @@ async function main() {
   );
 
   // 2. TRANSFER PHASE
-  const transferAmount = ethers.parseUnits("0.0005", 6);
+  const transferAmount = ethers.parseUnits("0.05", 6);
   const senderAvailBeforeTx = await client.getBalance(
     sender.address,
     senderKeys.privateKey,
@@ -198,7 +197,7 @@ async function main() {
   );
 
   // 4. WITHDRAW PHASE
-  const withdrawAmount = ethers.parseUnits("0.0003", 6);
+  const withdrawAmount = ethers.parseUnits("0.05", 6);
   const withdrawRes = await trackPerformance("WITHDRAW_TOKENS", () =>
     client.withdraw(recipient, TOKEN_ADDRESS, withdrawAmount),
   );

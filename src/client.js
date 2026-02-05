@@ -1,5 +1,10 @@
 import { ethers } from "ethers";
-import { CONTRACT_ABI, ERC20_ABI, DEFAULT_CONFIG } from "./constants.js";
+import {
+  CONTRACT_ABI,
+  ERC20_ABI,
+  DEFAULT_CONFIG,
+  TEMPO_FEE_TOKEN_ADDRESS,
+} from "./constants.js";
 import { deriveKeys, decryptCiphertext, combineCiphertext } from "./crypto.js";
 import { encodeTransferProof, encodeWithdrawProof, sleep } from "./utils.js";
 import { initializeWasm } from "./wasm-loader.js";
@@ -375,6 +380,7 @@ export class ConfidentialTransferClient {
         derivedSenderKeys.privateKey,
         tokenAddress,
       );
+      const fee = await this.getFeeAmount();
       if (!balanceInfo) {
         throw new Error("Failed to fetch sender balance");
       }
@@ -419,22 +425,26 @@ export class ConfidentialTransferClient {
         );
       }
 
-      // Get fee and execute transfer
-      const fee = await this.contract.feeAmount();
-      const tx = await this.contract
-        .connect(senderWallet)
-        .transferConfidential(
-          recipientAddress,
-          tokenAddress,
-          ethers.getBytes(encodeTransferProof(proof.data)),
-          useOffchainVerify,
-          { value: fee },
-        );
-
-      const receipt = await tx.wait();
-      if (!receipt || receipt.status === 0) {
-        throw new Error("Transfer transaction failed");
-      }
+      // Execute transfer based on chain type
+      // Tempo chain (42431) uses token-based(fee token for the current contract is pathUSD)fees instead of native currency
+      const receipt =
+        this.config.chainId === 42431
+          ? await this._executeTempoTransfer(
+              senderWallet,
+              senderAddress,
+              recipientAddress,
+              tokenAddress,
+              proof,
+              useOffchainVerify,
+              fee,
+            )
+          : await this._executeStandardTransfer(
+              senderWallet,
+              recipientAddress,
+              tokenAddress,
+              proof,
+              useOffchainVerify,
+            );
 
       if (waitForFinalization) {
         await this._waitForGlobalState(senderAddress, "transfer");
@@ -451,6 +461,160 @@ export class ConfidentialTransferClient {
       }
       throw new Error(`Failed to transfer: ${message}`);
     }
+  }
+
+  /**
+   * Execute confidential transfer on Tempo chain (chainId 42431)
+   *
+   * Tempo is a stablecoin-focused chain without native currency for smart contracts.
+   * This method handles token-based fee payment using PathUSD, requiring:
+   * - Fee token approval before transfer
+   * - Fee token balance validation
+   * - Gas estimation with fallback for estimation failures
+   *
+   * @private
+   */
+  async _executeTempoTransfer(
+    senderWallet,
+    senderAddress,
+    recipientAddress,
+    tokenAddress,
+    proof,
+    useOffchainVerify,
+    fee,
+  ) {
+    const feeTokenAddress = TEMPO_FEE_TOKEN_ADDRESS;
+    let tx;
+
+    // Check if feeTokenAddress is configured - this indicates token-based fee payment
+    if (feeTokenAddress) {
+      // Approve fee token for the contract
+      const feeTokenContract = this._getTokenContract(feeTokenAddress);
+
+      // Check balance first
+      const feeTokenBalance = await feeTokenContract.balanceOf(senderAddress);
+      if (feeTokenBalance < fee) {
+        throw new Error(
+          `Insufficient fee token ${TEMPO_FEE_TOKEN_ADDRESS} balance. Required: ${fee}, Available: ${feeTokenBalance}`,
+        );
+      }
+
+      const allowance = await feeTokenContract.allowance(
+        senderAddress,
+        this.config.contractAddress,
+      );
+
+      if (allowance < fee) {
+        const approveTx = await feeTokenContract
+          .connect(senderWallet)
+          .approve(this.config.contractAddress, ethers.MaxUint256);
+
+        const approveReceipt = await approveTx.wait();
+        if (!approveReceipt || approveReceipt.status === 0) {
+          throw new Error("Fee token approval failed");
+        }
+      }
+
+      // Try to estimate gas first to catch any revert reasons early
+      let gasLimit = 2_000_000n;
+      try {
+        const estimatedGas = await this.contract
+          .connect(senderWallet)
+          .transferConfidential.estimateGas(
+            recipientAddress,
+            tokenAddress,
+            ethers.getBytes(encodeTransferProof(proof.data)),
+            useOffchainVerify,
+            { value: 0 },
+          );
+        // Add 20% buffer to estimated gas
+        gasLimit = (estimatedGas * 120n) / 100n;
+      } catch (gasEstError) {
+        // If gas estimation fails, use default gas limit
+        console.warn(
+          `Gas estimation failed, using default gas limit: ${gasEstError?.message || String(gasEstError)}`,
+        );
+      }
+
+      tx = await this.contract
+        .connect(senderWallet)
+        .transferConfidential(
+          recipientAddress,
+          tokenAddress,
+          ethers.getBytes(encodeTransferProof(proof.data)),
+          useOffchainVerify,
+          { value: 0, gasLimit },
+        );
+    } else {
+      try {
+        tx = await this.contract
+          .connect(senderWallet)
+          .transferConfidential(
+            recipientAddress,
+            tokenAddress,
+            ethers.getBytes(encodeTransferProof(proof.data)),
+            useOffchainVerify,
+            { value: fee },
+          );
+      } catch (gasError) {
+        if (
+          gasError?.code === "CALL_EXCEPTION" ||
+          gasError?.code === "UNKNOWN_ERROR" ||
+          gasError?.message?.includes("estimateGas") ||
+          gasError?.message?.includes("missing revert data")
+        ) {
+          const gasLimit = 2_000_000n;
+          tx = await this.contract
+            .connect(senderWallet)
+            .transferConfidential(
+              recipientAddress,
+              tokenAddress,
+              ethers.getBytes(encodeTransferProof(proof.data)),
+              useOffchainVerify,
+              { value: fee, gasLimit },
+            );
+        } else {
+          throw gasError;
+        }
+      }
+    }
+
+    const receipt = await tx.wait();
+    if (!receipt || receipt.status === 0) {
+      throw new Error("Transfer transaction failed");
+    }
+
+    return receipt;
+  }
+
+  /**
+   * Execute confidential transfer on standard chains
+   * @private
+   */
+  async _executeStandardTransfer(
+    senderWallet,
+    recipientAddress,
+    tokenAddress,
+    proof,
+    useOffchainVerify,
+  ) {
+    const fee = await this.contract.feeAmount();
+    const tx = await this.contract
+      .connect(senderWallet)
+      .transferConfidential(
+        recipientAddress,
+        tokenAddress,
+        ethers.getBytes(encodeTransferProof(proof.data)),
+        useOffchainVerify,
+        { value: fee },
+      );
+
+    const receipt = await tx.wait();
+    if (!receipt || receipt.status === 0) {
+      throw new Error("Transfer transaction failed");
+    }
+
+    return receipt;
   }
 
   /**

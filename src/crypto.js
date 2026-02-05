@@ -71,7 +71,7 @@ export function decryptCiphertext(ciphertext, privateKey, decryptFn) {
     const result = JSON.parse(plainStr);
     return result.decrypted_amount || 0;
   } catch (e) {
-    return 0;
+    throw new Error("Decryption failed: " + e.message);
   }
 }
 
