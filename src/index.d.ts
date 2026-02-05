@@ -7,8 +7,7 @@ declare module "@fairblock/stabletrust" {
   export interface SdkConfig {
     rpcUrl: string;
     contractAddress: string;
-    chainId?: number;
-    explorerUrl?: string;
+    chainId: number;
   }
 
   /**
@@ -87,9 +86,11 @@ declare module "@fairblock/stabletrust" {
   export class ConfidentialTransferClient {
     /**
      * Create a new ConfidentialTransferClient
-     * @param config SDK configuration (no tokenAddress needed in constructor)
+     * @param rpcUrl RPC endpoint URL
+     * @param contractAddress Confidential transfer contract address
+     * @param chainId Chain ID
      */
-    constructor(config: SdkConfig);
+    constructor(rpcUrl: string, contractAddress: string, chainId?: number);
 
     /**
      * Derive encryption keys for a wallet

@@ -18,6 +18,19 @@ To install the package in your project, execute the following command:
 npm install @fairblock/stabletrust
 ```
 
+## Available Confidential Contract Addresses
+
+The following contract addresses are available for confidential transfers on different networks:
+
+| Network  | Contract Address                             |
+| :------- | :------------------------------------------- |
+| Stable   | `0x9261D8A9d5B66B202AC56E2BE738Df00D3ecAa4d` |
+| Arc      | `0x840499150804Af011B4d0C4A8a968F18b8626e41` |
+| Base     | `0x05ad3FF447930ad5B4085C07B4Ef9b10Aa0a58F2` |
+| Ethereum | `0x7B5A0060dE15a1AA1b9712A0146145E9D01A1acA` |
+| Arbitrum | `0x5acE788EF0C9f7f902642001d639AD155fF29A6C` |
+| Tempo    | `0x17176c409B66bb03d102215eeEdb34259Db0F5AD` |
+
 ## Usage
 
 The SDK revolves around the `ConfidentialTransferClient`, which manages interactions with the confidential transfer contract and handles the necessary cryptographic operations.
@@ -31,11 +44,11 @@ import { ConfidentialTransferClient } from "@fairblock/stabletrust";
 import { ethers } from "ethers";
 
 // Configuration for Arbitrum Sepolia (example)
-const client = new ConfidentialTransferClient({
-  rpcUrl: "https://sepolia-rollup.arbitrum.io/rpc",
-  contractAddress: "0x30bAc8a17DCACbA7f70F305f4ad908C9fd6d3E2E",
-  chainID: 421614,
-});
+const client = new ConfidentialTransferClient(
+  "https://sepolia-rollup.arbitrum.io/rpc",
+  "0x30bAc8a17DCACbA7f70F305f4ad908C9fd6d3E2E",
+  421614,
+);
 ```
 
 ### Key Functions

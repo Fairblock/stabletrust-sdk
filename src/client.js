@@ -21,29 +21,24 @@ export class ConfidentialTransferClient {
   /**
    * Create a new ConfidentialTransferClient instance
    *
-   * @param {Object} config - Configuration object
-   * @param {string} config.rpcUrl - RPC endpoint URL
-   * @param {string} config.contractAddress - Confidential transfer contract address
-   * @param {number} [config.chainId] - Chain ID (default: 421614)
-   * @param {string} [config.explorerUrl] - Block explorer URL
+   * @param {string} rpcUrl - RPC endpoint URL
+   * @param {string} contractAddress - Confidential transfer contract address
+   * @param {number} chainId - Chain ID
    */
-  constructor(config) {
+  constructor(rpcUrl, contractAddress, chainId) {
     // Validate required config
-    if (!config) {
-      throw new Error("Configuration object is required");
+    if (!rpcUrl) {
+      throw new Error("rpcUrl is required");
     }
-    if (!config.rpcUrl) {
-      throw new Error("config.rpcUrl is required");
-    }
-    if (!config.contractAddress) {
-      throw new Error("config.contractAddress is required");
+    if (!contractAddress) {
+      throw new Error("contractAddress is required");
     }
 
-    // Merge config with defaults
+    // Build config
     this.config = {
-      chainId: DEFAULT_CONFIG.CHAIN_ID,
-      explorerUrl: DEFAULT_CONFIG.EXPLORER_URL,
-      ...config,
+      rpcUrl,
+      contractAddress,
+      chainId,
     };
 
     // WASM will be auto-initialized on first use

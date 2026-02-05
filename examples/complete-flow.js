@@ -14,15 +14,16 @@ dotenv.config();
 // Currently configured for Arbitrum Sepolia confidential mirror contract.
 // You can deploy your own confidential contract on any EVM network and use that.
 const CONTRACT_ADDRESS =
-  process.env.CONTRACT_ADDRESS || "0x30bAc8a17DCACbA7f70F305f4ad908C9fd6d3E2E";
+  process.env.CONTRACT_ADDRESS || "0x05ad3FF447930ad5B4085C07B4Ef9b10Aa0a58F2";
 // Standard ERC20 token contract. Any ERC20 on this chain ID can be used.
 const TOKEN_ADDRESS =
-  process.env.TOKEN_ADDRESS || "0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d";
+  process.env.TOKEN_ADDRESS || "0x036CbD53842c5426634e7929541eC2318f3dCF7e";
 const RPC_URL =
-  process.env.ARBITRUM_RPC_URL || "https://sepolia-rollup.arbitrum.io/rpc";
+  process.env.ARBITRUM_RPC_URL ||
+  "https://base-sepolia.g.alchemy.com/v2/aWhH6EPG07A-ItRdWtiz63HyrMog6VYM";
 const EXPLORER_URL =
-  process.env.EXPLORER_URL || "https://sepolia.arbiscan.io/tx/";
-const CHAIN_ID = process.env.CHAIN_ID || 421614;
+  process.env.EXPLORER_URL || "https://sepolia.basescan.org/tx/";
+const CHAIN_ID = process.env.CHAIN_ID || 84532;
 
 /**
  * Performance Utility: Tracks execution time and provides timestamps
@@ -43,11 +44,11 @@ async function trackPerformance(actionName, action) {
 async function main() {
   console.log("=== Starting Confidential Flow Performance Test ===\n");
 
-  const client = new ConfidentialTransferClient({
-    rpcUrl: RPC_URL,
-    contractAddress: CONTRACT_ADDRESS,
-    chainID: CHAIN_ID,
-  });
+  const client = new ConfidentialTransferClient(
+    RPC_URL,
+    CONTRACT_ADDRESS,
+    CHAIN_ID,
+  );
 
   const provider = new ethers.JsonRpcProvider(RPC_URL);
   const sender = new ethers.Wallet(process.env.SENDER_PRIVATE_KEY, provider);

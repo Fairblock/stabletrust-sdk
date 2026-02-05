@@ -8,11 +8,11 @@ const EXPLORER_URL =
   process.env.EXPLORER_URL || "https://sepolia.arbiscan.io/tx/";
 async function minimalFlow() {
   // 1. Setup Client & Wallets
-  const client = new ConfidentialTransferClient({
-    rpcUrl: RPC_URL,
-    contractAddress: "0x30bAc8a17DCACbA7f70F305f4ad908C9fd6d3E2E",
-    chainID: 421614,
-  });
+  const client = new ConfidentialTransferClient(
+    RPC_URL,
+    "0x30bAc8a17DCACbA7f70F305f4ad908C9fd6d3E2E",
+    421614,
+  );
 
   const provider = new ethers.JsonRpcProvider(RPC_URL);
   const sender = new ethers.Wallet(process.env.SENDER_PRIVATE_KEY, provider);
