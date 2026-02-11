@@ -10,7 +10,7 @@ async function minimalFlow() {
   // 1. Setup Client & Wallets
   const client = new ConfidentialTransferClient(
     RPC_URL,
-    "0x30bAc8a17DCACbA7f70F305f4ad908C9fd6d3E2E",
+    "0xDC7Df05C2ce67881CDbF9A1af0F4C5d8C94c8A03",
     421614,
   );
 
