@@ -3,14 +3,14 @@ import dotenv from "dotenv";
 import { ConfidentialTransferClient } from "@fairblock/stabletrust";
 dotenv.config();
 const RPC_URL =
-  process.env.ARBITRUM_RPC_URL || "https://sepolia-rollup.arbitrum.io/rpc";
+  process.env.RPC_URL || "https://ethereum-sepolia-rpc.publicnode.com";
 const EXPLORER_URL =
-  process.env.EXPLORER_URL || "https://sepolia.arbiscan.io/tx/";
+  process.env.EXPLORER_URL || "https://sepolia.etherscan.io/tx/";
 async function minimalFlow() {
   // 1. Setup Client & Wallets
   const client = new ConfidentialTransferClient(
     RPC_URL,
-    "0xDC7Df05C2ce67881CDbF9A1af0F4C5d8C94c8A03",
+    "0xD765Dff7D734ABE09f88991A46BAb73ACa8910EF",
     421614,
   );
 
@@ -25,7 +25,7 @@ async function minimalFlow() {
   await client.ensureAccount(sender);
   await client.ensureAccount(recipient);
 
-  const TOKEN = "0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d";
+  const TOKEN = "0xD765Dff7D734ABE09f88991A46BAb73ACa8910EF";
   const amount = ethers.parseUnits("0.001", 6);
   let res;
   // 3. DEPOSIT: Move public ERC20 into the confidential contract

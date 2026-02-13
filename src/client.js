@@ -311,10 +311,6 @@ export class ConfidentialTransferClient {
    * @param {string} recipientAddress - Recipient's address
    * @param {string} tokenAddress - Token address to transfer
    * @param {number} amount - Amount to transfer
-   * @param {Object} senderKeys - Sender's encryption keys
-   * @param {string} recipientPublicKey - Recipient's public key
-   * @param {string} currentBalanceCiphertext - Current balance ciphertext
-   * @param {number} currentBalance - Current balance (decrypted)
    * @param {Object} [options] - Options
    * @param {boolean} [options.useOffchainVerify=false] - Use offchain verification
    * @param {boolean} [options.waitForFinalization=true] - Wait for transfer finalization
@@ -658,9 +654,6 @@ export class ConfidentialTransferClient {
    * @param {ethers.Wallet|ethers.Signer} wallet - The wallet to withdraw from
    * @param {string} tokenAddress - Token address to withdraw
    * @param {number} amount - Amount to withdraw
-   * @param {Object} keys - Encryption keys
-   * @param {string} currentBalanceCiphertext - Current balance ciphertext
-   * @param {number} currentBalance - Current balance (decrypted)
    * @param {Object} [options] - Options
    * @param {boolean} [options.useOffchainVerify=false] - Use offchain verification
    * @param {boolean} [options.waitForFinalization=true] - Wait for withdrawal finalization

@@ -1,6 +1,3 @@
-import fs from "fs";
-import path from "path";
-import { fileURLToPath } from "url";
 import init, {
   generate_deterministic_keypair,
   generate_transfer_proof,
@@ -8,19 +5,31 @@ import init, {
   decrypt_ciphertext,
 } from "../pkg/confidential_transfer_proof_generation.js";
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
 let isInitialized = false;
+let initPromise = null;
 
 /**
  * Initialize the WASM module
  * This must be called before using the SDK
  *
- * @param {Buffer|Uint8Array|string} [wasmPath] - Optional custom WASM file path or buffer
+ * In browsers, the WASM file is automatically loaded using bundler's asset handling.
+ * In Node.js, the WASM file is loaded from the filesystem.
+ *
+ * @param {Buffer|Uint8Array|string|URL} [input] - Optional custom WASM file path, URL, or buffer
  * @returns {Promise<Object>} WASM module functions
  */
-export async function initializeWasm(wasmPath) {
+export async function initializeWasm(input) {
+  // Return existing initialization if already in progress or complete
+  if (initPromise) {
+    await initPromise;
+    return {
+      generate_deterministic_keypair,
+      generate_transfer_proof,
+      generate_withdraw_proof,
+      decrypt_ciphertext,
+    };
+  }
+
   if (isInitialized) {
     return {
       generate_deterministic_keypair,
@@ -30,40 +39,57 @@ export async function initializeWasm(wasmPath) {
     };
   }
 
-  try {
-    let wasmBuffer;
+  // Create initialization promise
+  initPromise = (async () => {
+    try {
+      // Detect Node.js environment
+      const isNode =
+        typeof process !== "undefined" &&
+        process.versions != null &&
+        process.versions.node != null;
 
-    if (wasmPath) {
-      // If a custom path or buffer is provided
-      if (typeof wasmPath === "string") {
-        wasmBuffer = fs.readFileSync(wasmPath);
+      if (input) {
+        // User provided custom input
+        await init(input);
+      } else if (isNode) {
+        // Node.js: Load from filesystem
+        const fs = await import("fs");
+        const path = await import("path");
+        const { fileURLToPath } = await import("url");
+
+        const __filename = fileURLToPath(import.meta.url);
+        const __dirname = path.dirname(__filename);
+        const wasmPath = path.resolve(
+          __dirname,
+          "../pkg/confidential_transfer_proof_generation_bg.wasm",
+        );
+        const wasmBuffer = fs.readFileSync(wasmPath);
+
+        await init(wasmBuffer);
       } else {
-        wasmBuffer = wasmPath;
+        // Browser: Let the generated code handle it automatically
+        // It will use new URL(..., import.meta.url) which bundlers handle correctly
+        await init();
       }
-    } else {
-      // Use the bundled WASM file
-      const defaultWasmPath = path.resolve(
-        __dirname,
-        "../pkg/confidential_transfer_proof_generation_bg.wasm",
+
+      isInitialized = true;
+    } catch (error) {
+      initPromise = null; // Reset on failure so it can be retried
+      throw new Error(
+        `Failed to initialize WASM module: ${error.message}. ` +
+          `Make sure the WASM file exists at the expected location.`,
       );
-      wasmBuffer = fs.readFileSync(defaultWasmPath);
     }
+  })();
 
-    await init(wasmBuffer);
-    isInitialized = true;
+  await initPromise;
 
-    return {
-      generate_deterministic_keypair,
-      generate_transfer_proof,
-      generate_withdraw_proof,
-      decrypt_ciphertext,
-    };
-  } catch (error) {
-    throw new Error(
-      `Failed to initialize WASM module: ${error.message}. ` +
-        `Make sure the WASM file exists at the expected location.`,
-    );
-  }
+  return {
+    generate_deterministic_keypair,
+    generate_transfer_proof,
+    generate_withdraw_proof,
+    decrypt_ciphertext,
+  };
 }
 
 /**

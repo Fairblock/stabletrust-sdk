@@ -14,15 +14,16 @@ dotenv.config();
 // Currently configured for Arbitrum Sepolia confidential mirror contract.
 // You can deploy your own confidential contract on any EVM network and use that.
 const CONTRACT_ADDRESS =
-  process.env.CONTRACT_ADDRESS || "0x5acE788EF0C9f7f902642001d639AD155fF29A6C";
+  process.env.CONTRACT_ADDRESS || "0xD765Dff7D734ABE09f88991A46BAb73ACa8910EF";
 // Standard ERC20 token contract. Any ERC20 on this chain ID can be used.
 const TOKEN_ADDRESS =
-  process.env.TOKEN_ADDRESS || "0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d";
+  process.env.TOKEN_ADDRESS || "0xD765Dff7D734ABE09f88991A46BAb73ACa8910EF";
 const RPC_URL =
-  process.env.ARBITRUM_RPC_URL || "https://sepolia-rollup.arbitrum.io/rpc";
+  process.env.ETHEREUM_RPC_URL || "https://ethereum-sepolia-rpc.publicnode.com";
 const EXPLORER_URL =
-  process.env.EXPLORER_URL || "https://sepolia.arbiscan.io/tx/";
-const CHAIN_ID = process.env.CHAIN_ID || 421614;
+  process.env.EXPLORER_URL || "https://sepolia.etherscan.io/tx/";
+const CHAIN_ID = process.env.CHAIN_ID || 11155111;
+1;
 
 /**
  * Performance Utility: Tracks execution time and provides timestamps

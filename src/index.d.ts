@@ -90,7 +90,7 @@ declare module "@fairblock/stabletrust" {
      * @param contractAddress Confidential transfer contract address
      * @param chainId Chain ID
      */
-    constructor(rpcUrl: string, contractAddress: string, chainId?: number);
+    constructor(rpcUrl: string, contractAddress: string, chainId: number);
 
     /**
      * Derive encryption keys for a wallet
@@ -168,18 +168,12 @@ declare module "@fairblock/stabletrust" {
      * @param wallet Wallet to withdraw to
      * @param tokenAddress Token contract address to withdraw
      * @param amount Amount to withdraw
-     * @param keys Encryption keys
-     * @param currentBalanceCiphertext Current balance ciphertext
-     * @param currentBalance Current balance (decrypted)
      * @param options Withdrawal options
      */
     withdraw(
       wallet: ethers.Wallet | ethers.Signer,
       tokenAddress: string,
       amount: number,
-      keys: Keys,
-      currentBalanceCiphertext: string,
-      currentBalance: number,
       options?: WithdrawOptions,
     ): Promise<ethers.ContractTransactionReceipt>;
 
