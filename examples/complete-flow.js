@@ -11,7 +11,7 @@ dotenv.config();
  * https://docs.fairblock.network/docs/confidential_transfers/technical_overview
  */
 
-// Currently configured for Arbitrum Sepolia confidential mirror contract.
+// Currently configured for Ethereum Sepolia confidential mirror contract.
 // You can deploy your own confidential contract on any EVM network and use that.
 const CONTRACT_ADDRESS =
   process.env.CONTRACT_ADDRESS || "0xD765Dff7D734ABE09f88991A46BAb73ACa8910EF";
