@@ -17,7 +17,7 @@ const CONTRACT_ADDRESS =
   process.env.CONTRACT_ADDRESS || "0xD765Dff7D734ABE09f88991A46BAb73ACa8910EF";
 // Standard ERC20 token contract. Any ERC20 on this chain ID can be used.
 const TOKEN_ADDRESS =
-  process.env.TOKEN_ADDRESS || "0xD765Dff7D734ABE09f88991A46BAb73ACa8910EF";
+  process.env.TOKEN_ADDRESS || "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238";
 const RPC_URL =
   process.env.ETHEREUM_RPC_URL || "https://ethereum-sepolia-rpc.publicnode.com";
 const EXPLORER_URL =
