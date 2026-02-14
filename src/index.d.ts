@@ -27,6 +27,15 @@ declare module "@fairblock/stabletrust" {
   }
 
   /**
+   * Confidential balance summary
+   */
+  export interface ConfidentialBalance {
+    amount: number;
+    available: Balance;
+    pending: Balance;
+  }
+
+  /**
    * Account options
    */
   export interface AccountOptions {
@@ -50,33 +59,11 @@ declare module "@fairblock/stabletrust" {
   }
 
   /**
-   * Apply pending options
-   */
-  export interface ApplyPendingOptions {
-    waitForFinalization?: boolean;
-  }
-
-  /**
    * Withdraw options
    */
   export interface WithdrawOptions {
     useOffchainVerify?: boolean;
     waitForFinalization?: boolean;
-  }
-
-  /**
-   * Balance options
-   */
-  export interface BalanceOptions {
-    type?: "available" | "pending";
-  }
-
-  /**
-   * Wait for pending balance options
-   */
-  export interface WaitForPendingOptions {
-    maxAttempts?: number;
-    intervalMs?: number;
   }
 
   /**
@@ -93,11 +80,6 @@ declare module "@fairblock/stabletrust" {
     constructor(rpcUrl: string, contractAddress: string, chainId: number);
 
     /**
-     * Derive encryption keys for a wallet
-     */
-    deriveKeys(wallet: ethers.Wallet | ethers.Signer): Promise<Keys>;
-
-    /**
      * Get account information from the contract
      */
     getAccountInfo(address: string): Promise<any>;
@@ -111,18 +93,16 @@ declare module "@fairblock/stabletrust" {
     ): Promise<Keys>;
 
     /**
-     * Get decrypted balance for an address
+     * Get total decrypted balance (available + pending) for an address
      * @param address Account address
      * @param privateKey Private key for decryption
      * @param tokenAddress Token contract address
-     * @param options Balance options
      */
-    getBalance(
+    getConfidentialBalance(
       address: string,
       privateKey: string,
       tokenAddress: string,
-      options?: BalanceOptions,
-    ): Promise<Balance>;
+    ): Promise<ConfidentialBalance>;
 
     /**
      * Deposit tokens into confidential account
@@ -131,7 +111,7 @@ declare module "@fairblock/stabletrust" {
      * @param amount Amount to deposit
      * @param options Deposit options
      */
-    deposit(
+    confidentialDeposit(
       wallet: ethers.Wallet | ethers.Signer,
       tokenAddress: string,
       amount: bigint | string | number,
@@ -147,20 +127,12 @@ declare module "@fairblock/stabletrust" {
      * @param amount Amount to transfer
      * @param options Transfer options
      */
-    transfer(
+    confidentialTransfer(
       senderWallet: ethers.Wallet | ethers.Signer,
       recipientAddress: string,
       tokenAddress: string,
       amount: number,
       options?: TransferOptions,
-    ): Promise<ethers.ContractTransactionReceipt>;
-
-    /**
-     * Apply pending balance to available balance
-     */
-    applyPending(
-      wallet: ethers.Wallet | ethers.Signer,
-      options?: ApplyPendingOptions,
     ): Promise<ethers.ContractTransactionReceipt>;
 
     /**
@@ -178,30 +150,9 @@ declare module "@fairblock/stabletrust" {
     ): Promise<ethers.ContractTransactionReceipt>;
 
     /**
-     * Wait for pending balance to appear
-     * @param address Account address
-     * @param privateKey Private key for decryption
-     * @param tokenAddress Token contract address
-     * @param options Wait options
-     */
-    waitForPendingBalance(
-      address: string,
-      privateKey: string,
-      tokenAddress: string,
-      options?: WaitForPendingOptions,
-    ): Promise<Balance>;
-
-    /**
      * Get the current fee amount for confidential transfers
      */
     getFeeAmount(): Promise<bigint>;
-
-    /**
-     * Get ERC20 token balance
-     * @param address Account address
-     * @param tokenAddress Token contract address
-     */
-    getTokenBalance(address: string, tokenAddress: string): Promise<bigint>;
   }
 
   /**

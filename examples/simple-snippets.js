@@ -3,15 +3,15 @@ import dotenv from "dotenv";
 import { ConfidentialTransferClient } from "@fairblock/stabletrust";
 dotenv.config();
 const RPC_URL =
-  process.env.RPC_URL || "https://ethereum-sepolia-rpc.publicnode.com";
+  process.env.ETHEREUM_RPC_URL || "https://rpc.testnet.stable.xyz";
 const EXPLORER_URL =
-  process.env.EXPLORER_URL || "https://sepolia.etherscan.io/tx/";
+  process.env.EXPLORER_URL || "https://testnet.stablescan.xyz/tx/";
 async function minimalFlow() {
   // 1. Setup Client & Wallets
   const client = new ConfidentialTransferClient(
     RPC_URL,
-    "0xD765Dff7D734ABE09f88991A46BAb73ACa8910EF",
-    421614,
+    "0x29E4fd434758b1677c10854Fa81C2fc496D76E62",
+    2201,
   );
 
   const provider = new ethers.JsonRpcProvider(RPC_URL);
@@ -25,20 +25,22 @@ async function minimalFlow() {
   await client.ensureAccount(sender);
   await client.ensureAccount(recipient);
 
-  const TOKEN = "0xD765Dff7D734ABE09f88991A46BAb73ACa8910EF";
+  const TOKEN = "0x78Cf24370174180738C5B8E352B6D14c83a6c9A9";
   const amount = ethers.parseUnits("0.001", 6);
   let res;
   // 3. DEPOSIT: Move public ERC20 into the confidential contract
-  res = await client.deposit(sender, TOKEN, amount);
+  res = await client.confidentialDeposit(sender, TOKEN, amount);
   console.log("Deposit TX Hash:", EXPLORER_URL + res.hash);
   // 4. TRANSFER: Privacy-preserving transfer (On-chain amount is hidden)
   // This moves funds from Sender's 'Available' to Recipient's 'Pending' balance
-  res = await client.transfer(sender, recipient.address, TOKEN, amount / 2n);
+  res = await client.confidentialTransfer(
+    sender,
+    recipient.address,
+    TOKEN,
+    amount / 2n,
+  );
   console.log("Transfer TX Hash:", EXPLORER_URL + res.hash);
-  // 5. SETTLE: Recipient claims pending transfers into their available balance
-  res = await client.applyPending(recipient);
-  console.log("Settle TX Hash:", EXPLORER_URL + res.hash);
-  // 6. WITHDRAW: Convert confidential balance back to public ERC20
+  // 5. WITHDRAW: Convert confidential balance back to public ERC20
   res = await client.withdraw(recipient, TOKEN, amount / 4n);
   console.log("Withdraw TX Hash:", EXPLORER_URL + res.hash);
   console.log("Confidential flow complete.");

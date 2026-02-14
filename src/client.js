@@ -88,7 +88,7 @@ export class ConfidentialTransferClient {
    * @param {ethers.Wallet|ethers.Signer} wallet - The wallet to derive keys for
    * @returns {Promise<{publicKey: string, privateKey: string}>}
    */
-  async deriveKeys(wallet) {
+  async _deriveKeys(wallet) {
     try {
       if (!wallet) {
         throw new Error("Wallet is required");
@@ -138,7 +138,7 @@ export class ConfidentialTransferClient {
 
     try {
       const address = await wallet.getAddress();
-      const keys = await this.deriveKeys(wallet);
+      const keys = await this._deriveKeys(wallet);
       let accountInfo = await this.getAccountInfo(address);
 
       if (!accountInfo.exists) {
@@ -180,18 +180,61 @@ export class ConfidentialTransferClient {
   }
 
   /**
-   * Get decrypted balance for an address
+   * Get total decrypted balance (available + pending) for an address
    *
    * @param {string} address - Account address
    * @param {string} privateKey - Private key for decryption
    * @param {string} tokenAddress - Token address
-   * @param {Object} [options] - Options
-   * @param {string} [options.type='available'] - Balance type: 'available' or 'pending'
-   * @returns {Promise<{amount: number, ciphertext: string|null}>}
+   * @returns {Promise<{amount: number, available: {amount: number, ciphertext: string|null}, pending: {amount: number, ciphertext: string|null}}>}
    */
-  async getBalance(address, privateKey, tokenAddress, options = {}) {
-    const { type = "available" } = options;
+  async getConfidentialBalance(address, privateKey, tokenAddress) {
+    try {
+      const [available, pending] = await Promise.all([
+        this._getAvailableBalance(address, privateKey, tokenAddress),
+        this._getPendingBalance(address, privateKey, tokenAddress),
+      ]);
 
+      return {
+        amount: available.amount + pending.amount,
+        available,
+        pending,
+      };
+    } catch (error) {
+      throw new Error(`Failed to get confidential balance: ${error.message}`);
+    }
+  }
+
+  /**
+   * Get decrypted available balance for an address
+   * @private
+   */
+  async _getAvailableBalance(address, privateKey, tokenAddress) {
+    return await this._getBalanceByType(
+      address,
+      privateKey,
+      tokenAddress,
+      "available",
+    );
+  }
+
+  /**
+   * Get decrypted pending balance for an address
+   * @private
+   */
+  async _getPendingBalance(address, privateKey, tokenAddress) {
+    return await this._getBalanceByType(
+      address,
+      privateKey,
+      tokenAddress,
+      "pending",
+    );
+  }
+
+  /**
+   * Shared balance retrieval by type
+   * @private
+   */
+  async _getBalanceByType(address, privateKey, tokenAddress, type) {
     try {
       if (!address || !ethers.isAddress(address)) {
         throw new Error(`Invalid address: ${address}`);
@@ -204,7 +247,7 @@ export class ConfidentialTransferClient {
       }
 
       let c1, c2;
-      if (type.toLowerCase() === "pending") {
+      if (type === "pending") {
         [c1, c2] = await this.contract.getPending(address, tokenAddress);
       } else {
         [c1, c2] = await this.contract.getAvailable(address, tokenAddress);
@@ -229,6 +272,29 @@ export class ConfidentialTransferClient {
   }
 
   /**
+   * Apply pending balance if needed (internal helper)
+   * @private
+   */
+  async _applyPendingIfNeeded(wallet, privateKey, tokenAddress, actionLabel) {
+    const address = await wallet.getAddress();
+    const pendingBalance = await this._getPendingBalance(
+      address,
+      privateKey,
+      tokenAddress,
+    );
+
+    if (pendingBalance.amount > 0) {
+      try {
+        await this._applyPending(wallet, { waitForFinalization: true });
+      } catch (error) {
+        console.warn(
+          `Warning: Failed to apply pending balance before ${actionLabel}: ${error.message}. You may have pending balance that is not yet applied.`,
+        );
+      }
+    }
+  }
+
+  /**
    * Deposit tokens into confidential account
    *
    * @param {ethers.Wallet|ethers.Signer} wallet - The wallet to deposit from
@@ -238,7 +304,7 @@ export class ConfidentialTransferClient {
    * @param {boolean} [options.waitForFinalization=true] - Wait for deposit finalization
    * @returns {Promise<Object>} Transaction receipt
    */
-  async deposit(wallet, tokenAddress, amount, options = {}) {
+  async confidentialDeposit(wallet, tokenAddress, amount, options = {}) {
     const { waitForFinalization = true } = options;
 
     try {
@@ -253,6 +319,13 @@ export class ConfidentialTransferClient {
       }
 
       const address = await wallet.getAddress();
+      const derivedKeys = await this._deriveKeys(wallet);
+      await this._applyPendingIfNeeded(
+        wallet,
+        derivedKeys.privateKey,
+        tokenAddress,
+        "deposit",
+      );
       const depositAmount = BigInt(amount);
       const tokenContract = this._getTokenContract(tokenAddress);
 
@@ -280,7 +353,6 @@ export class ConfidentialTransferClient {
           throw new Error("Token approval failed");
         }
       }
-
       // Perform deposit
       const depositTx = await this.contract
         .connect(wallet)
@@ -316,7 +388,7 @@ export class ConfidentialTransferClient {
    * @param {boolean} [options.waitForFinalization=true] - Wait for transfer finalization
    * @returns {Promise<Object>} Transaction receipt
    */
-  async transfer(
+  async confidentialTransfer(
     senderWallet,
     recipientAddress,
     tokenAddress,
@@ -343,7 +415,7 @@ export class ConfidentialTransferClient {
       const senderAddress = await senderWallet.getAddress();
 
       // Auto-derive sender keys
-      const derivedSenderKeys = await this.deriveKeys(senderWallet);
+      const derivedSenderKeys = await this._deriveKeys(senderWallet);
       if (!derivedSenderKeys?.privateKey) {
         throw new Error("Failed to derive sender keys");
       }
@@ -370,22 +442,31 @@ export class ConfidentialTransferClient {
         ).toString("base64");
       }
 
-      // Auto-fetch current balance
-      const balanceInfo = await this.getBalance(
+      await this._applyPendingIfNeeded(
+        senderWallet,
+        derivedSenderKeys.privateKey,
+        tokenAddress,
+        "transfer",
+      );
+
+      const balanceSummary = await this.getConfidentialBalance(
         senderAddress,
         derivedSenderKeys.privateKey,
         tokenAddress,
       );
       const fee = await this.getFeeAmount();
-      if (!balanceInfo) {
-        throw new Error("Failed to fetch sender balance");
-      }
-      const derivedCurrentBalanceCiphertext = balanceInfo.ciphertext;
-      const derivedCurrentBalance = balanceInfo.amount;
+      const derivedCurrentBalanceCiphertext =
+        balanceSummary.available.ciphertext;
+      const derivedCurrentBalance = balanceSummary.available.amount;
 
       if (!derivedCurrentBalanceCiphertext) {
         throw new Error(
-          "Current balance ciphertext is required. Did you call getBalance()?",
+          "Current balance ciphertext is required. Did you call getConfidentialBalance()?",
+        );
+      }
+      if (balanceSummary.amount < amount) {
+        throw new Error(
+          `Insufficient balance. Required: ${amount}, Total: ${balanceSummary.amount}`,
         );
       }
       if (
@@ -612,42 +693,6 @@ export class ConfidentialTransferClient {
 
     return receipt;
   }
-
-  /**
-   * Apply pending balance to available balance
-   *
-   * @param {ethers.Wallet|ethers.Signer} wallet - The wallet to apply pending for
-   * @param {Object} [options] - Options
-   * @param {boolean} [options.waitForFinalization=true] - Wait for operation finalization
-   * @returns {Promise<Object>} Transaction receipt
-   */
-  async applyPending(wallet, options = {}) {
-    const { waitForFinalization = true } = options;
-
-    try {
-      if (!wallet) {
-        throw new Error("Wallet is required");
-      }
-
-      const address = await wallet.getAddress();
-
-      const tx = await this.contract.connect(wallet).applyPending();
-      const receipt = await tx.wait();
-
-      if (!receipt || receipt.status === 0) {
-        throw new Error("Apply pending transaction failed");
-      }
-
-      if (waitForFinalization) {
-        await this._waitForGlobalState(address, "apply pending");
-      }
-
-      return receipt;
-    } catch (error) {
-      throw new Error(`Failed to apply pending: ${error.message}`);
-    }
-  }
-
   /**
    * Withdraw confidential tokens to public ERC20
    *
@@ -675,28 +720,35 @@ export class ConfidentialTransferClient {
       }
 
       // Auto-derive keys
-      const derivedKeys = await this.deriveKeys(wallet);
+      const derivedKeys = await this._deriveKeys(wallet);
       if (!derivedKeys?.privateKey) {
         throw new Error("Failed to derive keys");
       }
 
-      const balanceInfo = await this.getBalance(
-        wallet.address,
+      const address = await wallet.getAddress();
+      await this._applyPendingIfNeeded(
+        wallet,
         derivedKeys.privateKey,
         tokenAddress,
-        {
-          type: "available",
-        },
+        "withdraw",
       );
-      if (!balanceInfo) {
-        throw new Error("Failed to fetch sender balance");
-      }
-      const currentBalanceCiphertext = balanceInfo.ciphertext;
-      const currentBalance = balanceInfo.amount;
+
+      const balanceSummary = await this.getConfidentialBalance(
+        address,
+        derivedKeys.privateKey,
+        tokenAddress,
+      );
+      const currentBalanceCiphertext = balanceSummary.available.ciphertext;
+      const currentBalance = balanceSummary.available.amount;
 
       if (!currentBalanceCiphertext) {
         throw new Error(
-          "Current balance ciphertext is required. Did you call getBalance()?",
+          "Current balance ciphertext is required. Did you call getConfidentialBalance()?",
+        );
+      }
+      if (balanceSummary.amount < amount) {
+        throw new Error(
+          `Insufficient balance. Required: ${amount}, Total: ${balanceSummary.amount}`,
         );
       }
       if (currentBalance === undefined || currentBalance < amount) {
@@ -704,8 +756,6 @@ export class ConfidentialTransferClient {
           `Insufficient balance. Required: ${amount}, Available: ${currentBalance}`,
         );
       }
-
-      const address = await wallet.getAddress();
 
       // Generate withdrawal proof
       const withdrawInput = {
@@ -763,6 +813,41 @@ export class ConfidentialTransferClient {
   }
 
   /**
+   * Apply pending balance to available balance
+   *
+   * @param {ethers.Wallet|ethers.Signer} wallet - The wallet to apply pending for
+   * @param {Object} [options] - Options
+   * @param {boolean} [options.waitForFinalization=true] - Wait for operation finalization
+   * @returns {Promise<Object>} Transaction receipt
+   */
+  async _applyPending(wallet, options = {}) {
+    const { waitForFinalization = true } = options;
+
+    try {
+      if (!wallet) {
+        throw new Error("Wallet is required");
+      }
+
+      const address = await wallet.getAddress();
+
+      const tx = await this.contract.connect(wallet).applyPending();
+      const receipt = await tx.wait();
+
+      if (!receipt || receipt.status === 0) {
+        throw new Error("Apply pending transaction failed");
+      }
+
+      if (waitForFinalization) {
+        await this._waitForGlobalState(address, "apply pending");
+      }
+
+      return receipt;
+    } catch (error) {
+      throw new Error(`Failed to apply pending: ${error.message}`);
+    }
+  }
+
+  /**
    * Wait for pending action to complete (internal method)
    *
    * @param {string} address - Account address
@@ -809,18 +894,20 @@ export class ConfidentialTransferClient {
    * @param {number} [options.intervalMs=3000] - Polling interval in milliseconds
    * @returns {Promise<{amount: number, ciphertext: string}>}
    */
-  async waitForPendingBalance(address, privateKey, tokenAddress, options = {}) {
+  async _waitForPendingBalance(
+    address,
+    privateKey,
+    tokenAddress,
+    options = {},
+  ) {
     const { maxAttempts = 60, intervalMs = 3000 } = options;
 
     try {
       for (let i = 0; i < maxAttempts; i++) {
-        const pending = await this.getBalance(
+        const pending = await this._getPendingBalance(
           address,
           privateKey,
           tokenAddress,
-          {
-            type: "pending",
-          },
         );
 
         if (pending.amount > 0) {
@@ -861,7 +948,7 @@ export class ConfidentialTransferClient {
    * @param {string} tokenAddress - Token address
    * @returns {Promise<bigint>} Token balance
    */
-  async getTokenBalance(address, tokenAddress) {
+  async _getTokenBalance(address, tokenAddress) {
     try {
       if (!address || !ethers.isAddress(address)) {
         throw new Error(`Invalid address: ${address}`);

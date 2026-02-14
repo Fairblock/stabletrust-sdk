@@ -38,7 +38,7 @@ The following contract addresses are available for confidential transfers on tes
 
 | Network  | Chain ID | Contract Address                             |
 | :------- | :------- | :------------------------------------------- |
-| Stable   | 2201     | `0x4735ab83c87Dea00A5B6377f477fe60C848D29d6` |
+| Stable   | 2201     | `0x29E4fd434758b1677c10854Fa81C2fc496D76E62` |
 | Arc      | 1244     | `0x1Bf79BF5A32D6f3cdce3fe1A93c3fB222Bc93bb3` |
 | Base     | 84532    | `0x73D2bc5B5c7aF5C3726E7bEf0BD8b4931923fdA9` |
 | Ethereum | 11155111 | `0xD765Dff7D734ABE09f88991A46BAb73ACa8910EF` |
@@ -94,17 +94,50 @@ const tempoClient = new ConfidentialTransferClient(
 
 **Note on Tempo Chain**: The Tempo network (chainId 42431) uses token-based fees instead of native currency. The SDK automatically handles fee payment using PathUSD when detected.
 
+### Token Denomination (x100)
+
+All confidential token amounts in this SDK use a fixed scale of 100. That means the SDK expects amounts in "token \* 100" units for deposit, transfer, and withdraw. When displaying balances, divide by 100.
+
+- To deposit 0.1 tokens, send 10 units (0.1 \* 100).
+- To display a balance, use $display = raw / 100$.
+
+**Recommended helpers (consistent with examples):**
+
+```javascript
+// Use 2 decimals to match x100 scaling
+const amountToDeposit = ethers.parseUnits("0.1", 2); // 10
+await client.confidentialDeposit(signer, tokenAddress, amountToDeposit);
+
+const amountToTransfer = ethers.parseUnits("0.05", 2); // 5
+await client.confidentialTransfer(
+  signer,
+  recipientAddress,
+  tokenAddress,
+  amountToTransfer,
+);
+
+const amountToWithdraw = ethers.parseUnits("0.02", 2); // 2
+await client.withdraw(signer, tokenAddress, amountToWithdraw);
+
+const balance = await client.getConfidentialBalance(
+  signer.address,
+  privateKey,
+  tokenAddress,
+);
+console.log("Balance:", ethers.formatUnits(balance.amount, 2));
+```
+
 ### Key Functions
 
 The following methods are the primary entry points for interacting with the confidential system.
 
-#### `deriveKeys(signer)`
+#### `getAccountInfo(address)`
 
-Derives the encryption keypair for a wallet. These keys are used for all confidential operations.
+Fetches account core information from the contract.
 
 - **Parameters**:
-  - `signer` (ethers.Signer): The ethers.js signer instance for the user.
-- **Returns**: An object containing `publicKey` and `privateKey` (base64-encoded).
+  - `address` (string): The account address.
+- **Returns**: Contract account data (exists, finalized, pubkey, etc.).
 
 #### `ensureAccount(signer, options)`
 
@@ -117,31 +150,32 @@ Initializes or retrieves the cryptographic keys associated with an account. This
     - `maxAttempts` (number): Maximum attempts to check finalization. Default: `30`
 - **Returns**: An object containing the user's private and public keys for the confidential system.
 
-#### `getBalance(address, privateKey, tokenAddress, options)`
+#### `getConfidentialBalance(address, privateKey, tokenAddress)`
 
-Retrieves the decrypted balance for a specific token in the confidential account.
+Retrieves the decrypted available and pending balances for a specific token, plus the total.
 
 - **Parameters**:
   - `address` (string): The account address.
   - `privateKey` (string): The private key for decryption.
   - `tokenAddress` (string): The token contract address.
-  - `options` (object, optional):
-    - `type` (string): Balance type—`'available'` or `'pending'`. Default: `'available'`
-- **Returns**: An object containing `amount` (number) and `ciphertext` (string).
+- **Returns**: An object containing:
+  - `amount` (number): The total (available + pending) in x100 units
+  - `available` (object): `{ amount, ciphertext }` in x100 units
+  - `pending` (object): `{ amount, ciphertext }` in x100 units
 
-#### `deposit(signer, tokenAddress, amount, options)`
+#### `confidentialDeposit(signer, tokenAddress, amount, options)`
 
 Deposits a specified amount of ERC20 tokens into the confidential contract, converting them into a "pending" confidential balance.
 
 - **Parameters**:
   - `signer` (ethers.Signer): The transaction signer.
   - `tokenAddress` (string): The contract address of the ERC20 token.
-  - `amount` (bigint | string | number): The amount to deposit (ensure proper unit scaling).
+  - `amount` (bigint | string | number): The amount to deposit in x100 units.
   - `options` (object, optional):
     - `waitForFinalization` (boolean): Wait for deposit finalization. Default: `true`
 - **Returns**: A transaction receipt.
 
-#### `transfer(signer, recipientAddress, tokenAddress, amount, options)`
+#### `confidentialTransfer(signer, recipientAddress, tokenAddress, amount, options)`
 
 Executes a confidential transfer of tokens from the sender to a recipient. The amount and nature of the transfer are encrypted.
 
@@ -149,20 +183,10 @@ Executes a confidential transfer of tokens from the sender to a recipient. The a
   - `signer` (ethers.Signer): The sender's signer.
   - `recipientAddress` (string): The public address of the recipient.
   - `tokenAddress` (string): The token contract address.
-  - `amount` (number): The amount to transfer.
+  - `amount` (number): The amount to transfer in x100 units.
   - `options` (object, optional):
     - `useOffchainVerify` (boolean): Use offchain verification. Default: `false`
     - `waitForFinalization` (boolean): Wait for transfer finalization. Default: `true`
-- **Returns**: A transaction receipt.
-
-#### `applyPending(signer, options)`
-
-Moves funds from the "pending" balance to the "available" balance. This is often necessary for the recipient to utilize received funds.
-
-- **Parameters**:
-  - `signer` (ethers.Signer): The user's signer.
-  - `options` (object, optional):
-    - `waitForFinalization` (boolean): Wait for operation finalization. Default: `true`
 - **Returns**: A transaction receipt.
 
 #### `withdraw(signer, tokenAddress, amount, options)`
@@ -172,39 +196,11 @@ Withdraws funds from the confidential "available" balance back to the public lay
 - **Parameters**:
   - `signer` (ethers.Signer): The user's signer.
   - `tokenAddress` (string): The token contract address.
-  - `amount` (number): The amount to withdraw.
+  - `amount` (number): The amount to withdraw in x100 units.
   - `options` (object, optional):
     - `useOffchainVerify` (boolean): Use offchain verification. Default: `false`
     - `waitForFinalization` (boolean): Wait for withdrawal finalization. Default: `true`
 - **Returns**: A transaction receipt.
-
-#### `waitForPendingBalance(address, privateKey, tokenAddress, options)`
-
-Polls for pending balance to appear after a transfer (typically after another user calls `applyPending`).
-
-- **Parameters**:
-  - `address` (string): The account address.
-  - `privateKey` (string): The private key for decryption.
-  - `tokenAddress` (string): The token contract address.
-  - `options` (object, optional):
-    - `maxAttempts` (number): Maximum polling attempts. Default: `60`
-    - `intervalMs` (number): Polling interval in milliseconds. Default: `3000`
-- **Returns**: An object containing `amount` and `ciphertext`.
-
-#### `getFeeAmount()`
-
-Retrieves the current fee amount required for confidential transfers on the network.
-
-- **Returns**: The fee amount in wei (bigint).
-
-#### `getTokenBalance(address, tokenAddress)`
-
-Retrieves the public ERC20 token balance for an address (non-confidential).
-
-- **Parameters**:
-  - `address` (string): The account address.
-  - `tokenAddress` (string): The token contract address.
-- **Returns**: The token balance (bigint).
 
 ### Examples
 
@@ -221,7 +217,12 @@ The SDK provides descriptive error messages for common issues. Here are some typ
 
 ```javascript
 try {
-  await client.transfer(signer, recipientAddress, tokenAddress, amount);
+  await client.confidentialTransfer(
+    signer,
+    recipientAddress,
+    tokenAddress,
+    amount,
+  );
 } catch (error) {
   if (error.message.includes("Insufficient balance")) {
     console.error("Transfer amount exceeds available balance");
@@ -251,12 +252,12 @@ The following are estimated execution times for standard operations within the c
 
 The following are estimated execution times for standard operations within the confidential flow. Please note that these durations may vary based on network congestion and client hardware performance.
 
-| Operation     | Avg Duration |
-| :------------ | :----------- |
-| Deposit       | 63s          |
-| Transfer      | 58s          |
-| Apply Pending | 61s          |
-| Withdraw      | 58s          |
+| Operation | Avg Duration |
+| :-------- | :----------- |
+| Creation  | 45s          |
+| Deposit   | 63s          |
+| Transfer  | 58s          |
+| Withdraw  | 58s          |
 
 ## Security Considerations
 
@@ -283,9 +284,10 @@ When using the StableTrust SDK, follow these best practices to ensure the securi
    - Allow sufficient time for account finalization before proceeding with operations
 
 5. **Balance Verification**
-   - Check available balance before initiating transfers
-   - Be aware of transaction fees that may vary by network
-   - On Tempo chain, ensure sufficient PathUSD balance for fee payment
+
+- Check available balance before initiating transfers (values are in x100 units)
+- Be aware of transaction fees that may vary by network
+- On Tempo chain, ensure sufficient PathUSD balance for fee payment
 
 6. **Error Handling**
    - Implement comprehensive error handling for all SDK operations

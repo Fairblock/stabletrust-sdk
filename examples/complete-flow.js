@@ -11,18 +11,18 @@ dotenv.config();
  * https://docs.fairblock.network/docs/confidential_transfers/technical_overview
  */
 
-// Currently configured for Ethereum Sepolia confidential mirror contract.
+// Currently configured for Stable Testnet confidential mirror contract.
 // You can deploy your own confidential contract on any EVM network and use that.
 const CONTRACT_ADDRESS =
-  process.env.CONTRACT_ADDRESS || "0xD765Dff7D734ABE09f88991A46BAb73ACa8910EF";
+  process.env.CONTRACT_ADDRESS || "0x29E4fd434758b1677c10854Fa81C2fc496D76E62";
 // Standard ERC20 token contract. Any ERC20 on this chain ID can be used.
 const TOKEN_ADDRESS =
-  process.env.TOKEN_ADDRESS || "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238";
+  process.env.TOKEN_ADDRESS || "0x78Cf24370174180738C5B8E352B6D14c83a6c9A9";
 const RPC_URL =
-  process.env.ETHEREUM_RPC_URL || "https://ethereum-sepolia-rpc.publicnode.com";
+  process.env.ETHEREUM_RPC_URL || "https://rpc.testnet.stable.xyz";
 const EXPLORER_URL =
-  process.env.EXPLORER_URL || "https://sepolia.etherscan.io/tx/";
-const CHAIN_ID = process.env.CHAIN_ID || 11155111;
+  process.env.EXPLORER_URL || "https://testnet.stablescan.xyz/tx/";
+const CHAIN_ID = process.env.CHAIN_ID || 2201;
 1;
 
 /**
@@ -64,141 +64,109 @@ async function main() {
   const recipientKeys = await client.ensureAccount(recipient);
 
   // 1. DEPOSIT PHASE
-  const depositAmount = ethers.parseUnits("0.1", 6);
-  const senderAvailBeforeDep = await client.getBalance(
+  const depositAmount = ethers.parseUnits("0.1", 2);
+  const senderConfidentialBalanceBefore = await client.getConfidentialBalance(
     sender.address,
     senderKeys.privateKey,
     TOKEN_ADDRESS,
-    { type: "available" },
-  );
-  console.log(
-    "Sender Available (Pre-Deposit):",
-    ethers.formatUnits(senderAvailBeforeDep.amount, 6),
   );
 
+  console.log(
+    "Sender Confidential Balance (Pre-Deposit):",
+    ethers.formatUnits(senderConfidentialBalanceBefore.amount, 2),
+  );
+
+  console.log("Depositing 0.1 tokens into confidential contract...");
+
   const depRes = await trackPerformance("DEPOSIT_TOKENS", () =>
-    client.deposit(sender, TOKEN_ADDRESS, depositAmount),
+    client.confidentialDeposit(sender, TOKEN_ADDRESS, depositAmount),
   );
   // Fixed hash reference: checking for result.transactionHash or result.hash
   const depHash = depRes.result.hash;
   console.log(`Transaction Hash: ${depHash}`);
   console.log(`View Transaction: ${EXPLORER_URL}${depHash}`);
 
-  const senderAvailAfterDep = await client.getBalance(
+  const senderConfidentialBalanceAfterDep = await client.getConfidentialBalance(
     sender.address,
     senderKeys.privateKey,
     TOKEN_ADDRESS,
-    { type: "available" },
   );
   console.log(
-    "Sender Available (Post-Deposit):",
-    ethers.formatUnits(senderAvailAfterDep.amount, 6),
-    "\n",
+    "Sender Confidential Balance (Post-Deposit):",
+    ethers.formatUnits(senderConfidentialBalanceAfterDep.amount, 2),
   );
 
   // 2. TRANSFER PHASE
-  const transferAmount = ethers.parseUnits("0.05", 6);
-  const senderAvailBeforeTx = await client.getBalance(
+  const transferAmount = ethers.parseUnits("0.05", 2);
+  const senderConfidentialBalanceBeforeTx = await client.getConfidentialBalance(
     sender.address,
     senderKeys.privateKey,
     TOKEN_ADDRESS,
-    { type: "available" },
-  );
-  const recipientPendBeforeTx = await client.getBalance(
-    recipient.address,
-    recipientKeys.privateKey,
-    TOKEN_ADDRESS,
-    { type: "pending" },
   );
 
+  const recipientConfidentialBalanceBeforeTx =
+    await client.getConfidentialBalance(
+      recipient.address,
+      recipientKeys.privateKey,
+      TOKEN_ADDRESS,
+    );
+
   console.log(
-    "Sender Available (Pre-Transfer):",
-    ethers.formatUnits(senderAvailBeforeTx.amount, 6),
+    "Sender Confidential Balance (Pre-Transfer):",
+    ethers.formatUnits(senderConfidentialBalanceBeforeTx.amount, 2),
   );
   console.log(
-    "Recipient Pending (Pre-Transfer):",
-    ethers.formatUnits(recipientPendBeforeTx.amount, 6),
+    "Recipient Confidential Balance (Pre-Transfer):",
+    ethers.formatUnits(recipientConfidentialBalanceBeforeTx.amount, 2),
   );
+
+  console.log("Transferring 0.05 tokens confidentially to recipient...");
 
   // FIXED: Ensured all arguments are explicitly passed in the arrow function
   const txRes = await trackPerformance("CONFIDENTIAL_TRANSFER", () =>
-    client.transfer(sender, recipient.address, TOKEN_ADDRESS, transferAmount),
+    client.confidentialTransfer(
+      sender,
+      recipient.address,
+      TOKEN_ADDRESS,
+      transferAmount,
+    ),
   );
 
   const txHash = txRes.result.hash;
   console.log(
-    "Status: Privacy shielding active. Transfer amount is hidden on-chain.",
+    "Status:Confidential Transfer is completed. Transfer amount is hidden on-chain.",
   );
   console.log(`Transaction Hash: ${txHash}`);
   console.log(`View Transaction: ${EXPLORER_URL}${txHash}`);
 
-  const senderAvailAfterTx = await client.getBalance(
+  const senderConfidentialBalanceAfterTx = await client.getConfidentialBalance(
     sender.address,
     senderKeys.privateKey,
     TOKEN_ADDRESS,
-    { type: "available" },
-  );
-  const recipientPendAfterTx = await client.getBalance(
-    recipient.address,
-    recipientKeys.privateKey,
-    TOKEN_ADDRESS,
-    { type: "pending" },
   );
 
+  const recipientConfidentialBalanceAfterTx =
+    await client.getConfidentialBalance(
+      recipient.address,
+      recipientKeys.privateKey,
+      TOKEN_ADDRESS,
+    );
+
   console.log(
-    "Sender Available (Post-Transfer):",
-    ethers.formatUnits(senderAvailAfterTx.amount, 6),
+    "Sender Confidential Balance (Post-Transfer):",
+    ethers.formatUnits(senderConfidentialBalanceAfterTx.amount, 2),
   );
   console.log(
-    "Recipient Pending (Post-Transfer):",
-    ethers.formatUnits(recipientPendAfterTx.amount, 6),
+    "Recipient Confidential Balance (Post-Transfer):",
+    ethers.formatUnits(recipientConfidentialBalanceAfterTx.amount, 2),
     "\n",
   );
 
-  // 3. APPLY PENDING PHASE
-  const recipientAvailBeforeApply = await client.getBalance(
-    recipient.address,
-    recipientKeys.privateKey,
-    TOKEN_ADDRESS,
-    { type: "available" },
-  );
+  // 3. WITHDRAW PHASE
+  const withdrawAmount = ethers.parseUnits("0.05", 2);
   console.log(
-    "Recipient Available (Pre-Apply):",
-    ethers.formatUnits(recipientAvailBeforeApply.amount, 6),
+    "Withdrawing 0.05 tokens from confidential contract to recipient's public balance...",
   );
-
-  const applyRes = await trackPerformance("APPLY_PENDING", () =>
-    client.applyPending(recipient),
-  );
-  const applyHash = applyRes.result.hash;
-  console.log(`Transaction Hash: ${applyHash}`);
-  console.log(`View Transaction: ${EXPLORER_URL}${applyHash}`);
-
-  const recipientPendAfterApply = await client.getBalance(
-    recipient.address,
-    recipientKeys.privateKey,
-    TOKEN_ADDRESS,
-    { type: "pending" },
-  );
-  const recipientAvailAfterApply = await client.getBalance(
-    recipient.address,
-    recipientKeys.privateKey,
-    TOKEN_ADDRESS,
-    { type: "available" },
-  );
-
-  console.log(
-    "Recipient Pending (Post-Apply):",
-    ethers.formatUnits(recipientPendAfterApply.amount, 6),
-  );
-  console.log(
-    "Recipient Available (Post-Apply):",
-    ethers.formatUnits(recipientAvailAfterApply.amount, 6),
-    "\n",
-  );
-
-  // 4. WITHDRAW PHASE
-  const withdrawAmount = ethers.parseUnits("0.05", 6);
   const withdrawRes = await trackPerformance("WITHDRAW_TOKENS", () =>
     client.withdraw(recipient, TOKEN_ADDRESS, withdrawAmount),
   );
@@ -206,15 +174,16 @@ async function main() {
   console.log(`Transaction Hash: ${withdrawHash}`);
   console.log(`View Transaction: ${EXPLORER_URL}${withdrawHash}`);
 
-  const recipientAvailAfterWithdraw = await client.getBalance(
-    recipient.address,
-    recipientKeys.privateKey,
-    TOKEN_ADDRESS,
-    { type: "available" },
-  );
+  const recipientConfidentialBalanceAfterWithdraw =
+    await client.getConfidentialBalance(
+      recipient.address,
+      recipientKeys.privateKey,
+      TOKEN_ADDRESS,
+    );
+
   console.log(
-    "Recipient Available (Final):",
-    ethers.formatUnits(recipientAvailAfterWithdraw.amount, 6),
+    "Recipient Confidential Balance (Final):",
+    ethers.formatUnits(recipientConfidentialBalanceAfterWithdraw.amount, 2),
   );
 
   console.log("\n=== Complete Flow Execution Finished ===");
