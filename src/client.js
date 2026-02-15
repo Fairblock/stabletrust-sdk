@@ -948,7 +948,7 @@ export class ConfidentialTransferClient {
    * @param {string} tokenAddress - Token address
    * @returns {Promise<bigint>} Token balance
    */
-  async _getTokenBalance(address, tokenAddress) {
+  async getPublicBalance(address, tokenAddress) {
     try {
       if (!address || !ethers.isAddress(address)) {
         throw new Error(`Invalid address: ${address}`);

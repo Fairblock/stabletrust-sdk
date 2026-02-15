@@ -2,8 +2,7 @@ import { ethers } from "ethers";
 import dotenv from "dotenv";
 import { ConfidentialTransferClient } from "@fairblock/stabletrust";
 dotenv.config();
-const RPC_URL =
-  process.env.ETHEREUM_RPC_URL || "https://rpc.testnet.stable.xyz";
+const RPC_URL = process.env.RPC_URL || "https://rpc.testnet.stable.xyz";
 const EXPLORER_URL =
   process.env.EXPLORER_URL || "https://testnet.stablescan.xyz/tx/";
 async function minimalFlow() {

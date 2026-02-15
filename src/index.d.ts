@@ -153,6 +153,13 @@ declare module "@fairblock/stabletrust" {
      * Get the current fee amount for confidential transfers
      */
     getFeeAmount(): Promise<bigint>;
+
+    /**
+     * Get the public ERC20 balance for an address (for comparison with confidential balance)
+     * @param address Account address
+     * @param tokenAddress Token contract address
+     */
+    getPublicBalance(address: string, tokenAddress: string): Promise<bigint>;
   }
 
   /**
