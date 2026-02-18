@@ -36,14 +36,14 @@ yarn add @fairblock/stabletrust
 
 The following contract addresses are available for confidential transfers on testnet networks. These are test deployments and should not be used with mainnet assets:
 
-| Network  | Chain ID | Contract Address                             |
-| :------- | :------- | :------------------------------------------- |
-| Stable   | 2201     | `0x29E4fd434758b1677c10854Fa81C2fc496D76E62` |
-| Arc      | 1244     | `0x1Bf79BF5A32D6f3cdce3fe1A93c3fB222Bc93bb3` |
-| Base     | 84532    | `0x73D2bc5B5c7aF5C3726E7bEf0BD8b4931923fdA9` |
-| Ethereum | 11155111 | `0xD765Dff7D734ABE09f88991A46BAb73ACa8910EF` |
-| Arbitrum | 421614   | `0xDC7Df05C2ce67881CDbF9A1af0F4C5d8C94c8A03` |
-| Tempo    | 42431    | `0xB7bdce025c8a25e341Cb55795f8ba865AB3e392C` |
+| Network(Testnet) | Chain ID | Contract Address                             |
+| :--------------- | :------- | :------------------------------------------- |
+| Stable           | 2201     | `0x29E4fd434758b1677c10854Fa81C2fc496D76E62` |
+| Arc              | 1244     | `0xf085e801a6FD9d03b09566a738734B7e2Bb065De` |
+| Base             | 84532    | `0x6FE45A71F5232a4E5e583Ae31A538360fB1e6aDb` |
+| Ethereum         | 11155111 | `0x81a2c161c0327464430658516eE74A669feFC7bC` |
+| Arbitrum         | 421614   | `0xa59462200F6E438c538b914eB5F980B3Fa723aA0` |
+| Tempo            | 42431    | `0xB7bdce025c8a25e341Cb55795f8ba865AB3e392C` |
 
 ## Usage
 
@@ -57,37 +57,40 @@ Import and initialize the client with your network configuration.
 import { ConfidentialTransferClient } from "@fairblock/stabletrust";
 import { ethers } from "ethers";
 
-// Configuration for Arbitrum (example)
+// Configuration for Base Sepolia (uses SDK default StableTrust contract for chainId 84532)
 const client = new ConfidentialTransferClient(
-  "https://arb1.arbitrum.io/rpc",
-  "0x5acE788EF0C9f7f902642001d639AD155fF29A6C",
-  42161,
+  "https://sepolia.base.org",
+  84532,
+);
+```
+
+If you are using a custom deployment, you can still pass an explicit contract address:
+
+```javascript
+const customClient = new ConfidentialTransferClient(
+  "https://sepolia.base.org",
+  "0xYourCustomStableTrustContract",
+  84532,
 );
 ```
 
 #### Network Configuration Examples
 
-For different networks, use the following configurations:
+For testnet networks listed above, use the following configurations:
 
 ```javascript
-// Base
-const baseClient = new ConfidentialTransferClient(
-  "https://mainnet.base.org",
-  "0x05ad3FF447930ad5B4085C07B4Ef9b10Aa0a58F2",
-  8453,
+// Stable testnet
+const stableClient = new ConfidentialTransferClient(
+  "https://rpc.testnet.stable.xyz",
+  2201,
 );
 
-// Ethereum Mainnet
-const ethClient = new ConfidentialTransferClient(
-  "https://eth.public.netzach.io",
-  "0x7B5A0060dE15a1AA1b9712A0146145E9D01A1acA",
-  1,
-);
+// Arc testnet
+const arcClient = new ConfidentialTransferClient("https://rpc.arc.xyz", 1244);
 
 // Tempo (Stablecoin chain with special fee handling)
 const tempoClient = new ConfidentialTransferClient(
   "https://tempo-rpc.example.com",
-  "0x17176c409B66bb03d102215eeEdb34259Db0F5AD",
   42431,
 );
 ```

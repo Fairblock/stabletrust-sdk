@@ -7,11 +7,7 @@ const EXPLORER_URL =
   process.env.EXPLORER_URL || "https://testnet.stablescan.xyz/tx/";
 async function minimalFlow() {
   // 1. Setup Client & Wallets
-  const client = new ConfidentialTransferClient(
-    RPC_URL,
-    "0x29E4fd434758b1677c10854Fa81C2fc496D76E62",
-    2201,
-  );
+  const client = new ConfidentialTransferClient(RPC_URL, 2201);
 
   const provider = new ethers.JsonRpcProvider(RPC_URL);
   const sender = new ethers.Wallet(process.env.SENDER_PRIVATE_KEY, provider);
@@ -25,7 +21,7 @@ async function minimalFlow() {
   await client.ensureAccount(recipient);
 
   const TOKEN = "0x78Cf24370174180738C5B8E352B6D14c83a6c9A9";
-  const amount = ethers.parseUnits("0.001", 6);
+  const amount = ethers.parseUnits("0.1", 2);
   let res;
   // 3. DEPOSIT: Move public ERC20 into the confidential contract
   res = await client.confidentialDeposit(sender, TOKEN, amount);
@@ -36,11 +32,11 @@ async function minimalFlow() {
     sender,
     recipient.address,
     TOKEN,
-    amount / 2n,
+    ethers.parseUnits("0.05", 2),
   );
   console.log("Transfer TX Hash:", EXPLORER_URL + res.hash);
   // 5. WITHDRAW: Convert confidential balance back to public ERC20
-  res = await client.withdraw(recipient, TOKEN, amount / 4n);
+  res = await client.withdraw(recipient, TOKEN, ethers.parseUnits("0.05", 2));
   console.log("Withdraw TX Hash:", EXPLORER_URL + res.hash);
   console.log("Confidential flow complete.");
 }

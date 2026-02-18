@@ -2,7 +2,7 @@ import { ethers } from "ethers";
 import {
   CONTRACT_ABI,
   ERC20_ABI,
-  DEFAULT_CONFIG,
+  getStableTrustContractAddress,
   TEMPO_FEE_TOKEN_ADDRESS,
 } from "./constants.js";
 import { deriveKeys, decryptCiphertext, combineCiphertext } from "./crypto.js";
@@ -27,23 +27,48 @@ export class ConfidentialTransferClient {
    * Create a new ConfidentialTransferClient instance
    *
    * @param {string} rpcUrl - RPC endpoint URL
-   * @param {string} contractAddress - Confidential transfer contract address
-   * @param {number} chainId - Chain ID
+   * @param {string|number} contractAddressOrChainId - Contract address or chain ID
+   * @param {number} [chainId] - Chain ID when contract address is provided
    */
-  constructor(rpcUrl, contractAddress, chainId) {
+  constructor(rpcUrl, contractAddressOrChainId, chainId) {
     // Validate required config
     if (!rpcUrl) {
       throw new Error("rpcUrl is required");
     }
-    if (!contractAddress) {
-      throw new Error("contractAddress is required");
+
+    let resolvedChainId;
+    let resolvedContractAddress;
+
+    if (typeof contractAddressOrChainId === "number" && chainId === undefined) {
+      resolvedChainId = contractAddressOrChainId;
+      resolvedContractAddress = getStableTrustContractAddress(resolvedChainId);
+    } else {
+      resolvedChainId = chainId;
+      resolvedContractAddress =
+        contractAddressOrChainId ||
+        getStableTrustContractAddress(resolvedChainId);
+    }
+
+    if (!resolvedChainId) {
+      throw new Error("chainId is required");
+    }
+    if (!resolvedContractAddress) {
+      const supportedChainIds = [2201, 1244, 84532, 11155111, 421614, 42431]
+        .map(String)
+        .join(", ");
+      throw new Error(
+        `contractAddress is required for chainId ${resolvedChainId}. No default StableTrust contract is configured for this chain. Supported chainIds: ${supportedChainIds}`,
+      );
+    }
+    if (!ethers.isAddress(resolvedContractAddress)) {
+      throw new Error(`Invalid contractAddress: ${resolvedContractAddress}`);
     }
 
     // Build config
     this.config = {
       rpcUrl,
-      contractAddress,
-      chainId,
+      contractAddress: ethers.getAddress(resolvedContractAddress),
+      chainId: Number(resolvedChainId),
     };
 
     // WASM will be auto-initialized on first use

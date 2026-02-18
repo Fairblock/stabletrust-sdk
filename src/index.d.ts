@@ -10,6 +10,14 @@ declare module "@fairblock/stabletrust" {
     chainId: number;
   }
 
+  export type StableTrustChainId =
+    | 1244
+    | 2201
+    | 42431
+    | 84532
+    | 421614
+    | 11155111;
+
   /**
    * Encryption keys
    */
@@ -71,6 +79,13 @@ declare module "@fairblock/stabletrust" {
    * WASM auto-initializes on first use - no manual initialization required!
    */
   export class ConfidentialTransferClient {
+    /**
+     * Create a new ConfidentialTransferClient
+     * @param rpcUrl RPC endpoint URL
+     * @param chainId Chain ID (uses default StableTrust contract for known networks)
+     */
+    constructor(rpcUrl: string, chainId: number);
+
     /**
      * Create a new ConfidentialTransferClient
      * @param rpcUrl RPC endpoint URL
@@ -218,10 +233,12 @@ declare module "@fairblock/stabletrust" {
   export const ERC20_ABI: any[];
 
   /**
-   * Default configuration values
+   * StableTrust contract addresses by chain id
    */
-  export const DEFAULT_CONFIG: {
-    CHAIN_ID: number;
-    EXPLORER_URL: string;
-  };
+  export const STABLETRUST_CONTRACTS_BY_CHAIN_ID: Record<number, string>;
+
+  /**
+   * Resolve StableTrust contract address by chain id
+   */
+  export function getStableTrustContractAddress(chainId: number): string | null;
 }

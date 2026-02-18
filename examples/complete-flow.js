@@ -11,8 +11,7 @@ dotenv.config();
  * https://docs.fairblock.network/docs/confidential_transfers/technical_overview
  */
 
-// Currently configured for Stable Testnet confidential mirror contract.
-// You can deploy your own confidential contract on any EVM network and use that.
+// Optional override for custom confidential contract deployments.
 const CONTRACT_ADDRESS =
   process.env.CONTRACT_ADDRESS || "0x29E4fd434758b1677c10854Fa81C2fc496D76E62";
 // Standard ERC20 token contract. Any ERC20 on this chain ID can be used.
@@ -23,7 +22,6 @@ const RPC_URL =
 const EXPLORER_URL =
   process.env.EXPLORER_URL || "https://testnet.stablescan.xyz/tx/";
 const CHAIN_ID = process.env.CHAIN_ID || 2201;
-1;
 
 /**
  * Performance Utility: Tracks execution time and provides timestamps
@@ -47,7 +45,7 @@ async function main() {
   const client = new ConfidentialTransferClient(
     RPC_URL,
     CONTRACT_ADDRESS,
-    CHAIN_ID,
+    Number(CHAIN_ID),
   );
 
   const provider = new ethers.JsonRpcProvider(RPC_URL);

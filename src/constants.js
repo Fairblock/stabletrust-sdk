@@ -20,13 +20,18 @@ export const ERC20_ABI = [
   "function balanceOf(address account) external view returns (uint256)",
 ];
 
-export const DEFAULT_CONFIG = {
-  CHAIN_ID: 421614,
-  EXPLORER_URL: "https://sepolia.arbiscan.io/tx/",
-  RPC_URL: "https://sepolia-rollup.arbitrum.io/rpc",
-  CONTRACT_ADDRESS: "0x30bAc8a17DCACbA7f70F305f4ad908C9fd6d3E2E",
-  TOKEN_ADDRESS: "0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d",
-};
-
 export const TEMPO_FEE_TOKEN_ADDRESS =
   "0x20c0000000000000000000000000000000000000";
+
+export const STABLETRUST_CONTRACTS_BY_CHAIN_ID = Object.freeze({
+  2201: "0x29E4fd434758b1677c10854Fa81C2fc496D76E62",
+  1244: "0xf085e801a6FD9d03b09566a738734B7e2Bb065De",
+  84532: "0x6FE45A71F5232a4E5e583Ae31A538360fB1e6aDb",
+  11155111: "0x81a2c161c0327464430658516eE74A669feFC7bC",
+  421614: "0xa59462200F6E438c538b914eB5F980B3Fa723aA0",
+  42431: "0xB7bdce025c8a25e341Cb55795f8ba865AB3e392C",
+});
+
+export function getStableTrustContractAddress(chainId) {
+  return STABLETRUST_CONTRACTS_BY_CHAIN_ID[Number(chainId)] || null;
+}
