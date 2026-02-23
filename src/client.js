@@ -155,11 +155,11 @@ export class ConfidentialTransferClient {
    * @param {ethers.Wallet|ethers.Signer} wallet - The wallet to create account for
    * @param {Object} [options] - Options
    * @param {boolean} [options.waitForFinalization=true] - Wait for account finalization
-   * @param {number} [options.maxAttempts=30] - Max attempts to wait for finalization
+   * @param {number} [options.maxAttempts=225] - Max attempts to wait for finalization
    * @returns {Promise<{publicKey: string, privateKey: string}>} The derived keys
    */
   async ensureAccount(wallet, options = {}) {
-    const { waitForFinalization = true, maxAttempts = 30 } = options;
+    const { waitForFinalization = true, maxAttempts = 225 } = options;
 
     try {
       const address = await wallet.getAddress();
@@ -183,7 +183,7 @@ export class ConfidentialTransferClient {
       if (waitForFinalization) {
         let attempts = 0;
         while (!accountInfo.finalized && attempts < maxAttempts) {
-          await sleep(2000);
+          await sleep(400);
           accountInfo = await this.getAccountInfo(address);
           attempts++;
         }
@@ -881,7 +881,7 @@ export class ConfidentialTransferClient {
    */
   async _waitForGlobalState(address, actionLabel) {
     let attempts = 0;
-    const maxAttempts = 300;
+    const maxAttempts = 450; // 450 * 200ms = 90 seconds max wait
 
     while (attempts < maxAttempts) {
       try {
@@ -912,8 +912,8 @@ export class ConfidentialTransferClient {
    * @param {string} privateKey - Private key for decryption
    * @param {string} tokenAddress - Token address
    * @param {Object} [options] - Options
-   * @param {number} [options.maxAttempts=60] - Maximum polling attempts
-   * @param {number} [options.intervalMs=3000] - Polling interval in milliseconds
+   * @param {number} [options.maxAttempts=225] - Maximum polling attempts
+   * @param {number} [options.intervalMs=400] - Polling interval in milliseconds
    * @returns {Promise<{amount: number, ciphertext: string}>}
    */
   async _waitForPendingBalance(
@@ -922,7 +922,7 @@ export class ConfidentialTransferClient {
     tokenAddress,
     options = {},
   ) {
-    const { maxAttempts = 60, intervalMs = 3000 } = options;
+    const { maxAttempts = 225, intervalMs = 400 } = options;
 
     try {
       for (let i = 0; i < maxAttempts; i++) {
