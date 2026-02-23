@@ -880,11 +880,8 @@ export class ConfidentialTransferClient {
    * @private
    */
   async _waitForGlobalState(address, actionLabel) {
-    // Initial cooldown to allow the relayer/indexer to pick up the transaction
-    await sleep(10000);
-
     let attempts = 0;
-    const maxAttempts = 60;
+    const maxAttempts = 250;
 
     while (attempts < maxAttempts) {
       try {
@@ -899,7 +896,7 @@ export class ConfidentialTransferClient {
         );
       }
 
-      await sleep(3000);
+      await sleep(200);
       attempts++;
     }
 

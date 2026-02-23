@@ -168,6 +168,17 @@ async function main() {
   const withdrawRes = await trackPerformance("WITHDRAW_TOKENS", () =>
     client.withdraw(recipient, TOKEN_ADDRESS, withdrawAmount),
   );
+  let recipientConfidentialBalanceBeforeWithdraw =
+    await client.getConfidentialBalance(
+      recipient.address,
+      recipientKeys.privateKey,
+      TOKEN_ADDRESS,
+    );
+
+  console.log(
+    "Recipient Confidential Balance (Pre-Withdraw):",
+    ethers.formatUnits(recipientConfidentialBalanceBeforeWithdraw.amount, 2),
+  );
   const withdrawHash = withdrawRes.result.hash;
   console.log(`Transaction Hash: ${withdrawHash}`);
   console.log(`View Transaction: ${EXPLORER_URL}${withdrawHash}`);
