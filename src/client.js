@@ -881,7 +881,7 @@ export class ConfidentialTransferClient {
    */
   async _waitForGlobalState(address, actionLabel) {
     let attempts = 0;
-    const maxAttempts = 250;
+    const maxAttempts = 300;
 
     while (attempts < maxAttempts) {
       try {
