@@ -74,6 +74,9 @@ export class ConfidentialTransferClient {
     // WASM will be auto-initialized on first use
     this._wasmModule = null;
 
+    // Cache for derived keys — deterministic per wallet+chain+contract, safe to reuse
+    this._keyCache = new Map();
+
     try {
       this.provider = new ethers.JsonRpcProvider(this.config.rpcUrl);
       this.contract = new ethers.Contract(
@@ -118,8 +121,12 @@ export class ConfidentialTransferClient {
       if (!wallet) {
         throw new Error("Wallet is required");
       }
+      const address = await wallet.getAddress();
+      if (this._keyCache.has(address)) {
+        return this._keyCache.get(address);
+      }
       const wasm = await this._getWasm();
-      return await deriveKeys(
+      const keys = await deriveKeys(
         wallet,
         {
           chainId: this.config.chainId,
@@ -127,6 +134,8 @@ export class ConfidentialTransferClient {
         },
         wasm.generate_deterministic_keypair,
       );
+      this._keyCache.set(address, keys);
+      return keys;
     } catch (error) {
       throw new Error(`Failed to derive keys: ${error.message}`);
     }
@@ -354,19 +363,16 @@ export class ConfidentialTransferClient {
       const depositAmount = BigInt(amount);
       const tokenContract = this._getTokenContract(tokenAddress);
 
-      // Check token balance
-      const tokenBalance = await tokenContract.balanceOf(address);
+      // Check token balance and allowance in parallel
+      const [tokenBalance, allowance] = await Promise.all([
+        tokenContract.balanceOf(address),
+        tokenContract.allowance(address, this.config.contractAddress),
+      ]);
       if (tokenBalance < depositAmount) {
         throw new Error(
           `Insufficient token balance. Required: ${depositAmount}, Available: ${tokenBalance}`,
         );
       }
-
-      // Check and approve if needed
-      const allowance = await tokenContract.allowance(
-        address,
-        this.config.contractAddress,
-      );
 
       if (allowance < depositAmount) {
         const approveTx = await tokenContract
@@ -439,14 +445,15 @@ export class ConfidentialTransferClient {
 
       const senderAddress = await senderWallet.getAddress();
 
-      // Auto-derive sender keys
-      const derivedSenderKeys = await this._deriveKeys(senderWallet);
+      // Derive sender keys and fetch recipient account info in parallel
+      const [derivedSenderKeys, recipientAccountInfo] = await Promise.all([
+        this._deriveKeys(senderWallet),
+        this.getAccountInfo(recipientAddress),
+      ]);
       if (!derivedSenderKeys?.privateKey) {
         throw new Error("Failed to derive sender keys");
       }
 
-      // Auto-derive recipient public key
-      const recipientAccountInfo = await this.getAccountInfo(recipientAddress);
       if (!recipientAccountInfo.exists) {
         throw new Error(
           `Recipient account does not exist. Address: ${recipientAddress}`,
@@ -474,12 +481,14 @@ export class ConfidentialTransferClient {
         "transfer",
       );
 
-      const balanceSummary = await this.getConfidentialBalance(
-        senderAddress,
-        derivedSenderKeys.privateKey,
-        tokenAddress,
-      );
-      const fee = await this.getFeeAmount();
+      const [balanceSummary, fee] = await Promise.all([
+        this.getConfidentialBalance(
+          senderAddress,
+          derivedSenderKeys.privateKey,
+          tokenAddress,
+        ),
+        this.getFeeAmount(),
+      ]);
       const derivedCurrentBalanceCiphertext =
         balanceSummary.available.ciphertext;
       const derivedCurrentBalance = balanceSummary.available.amount;
@@ -882,6 +891,7 @@ export class ConfidentialTransferClient {
   async _waitForGlobalState(address, actionLabel) {
     let attempts = 0;
     const maxAttempts = 450; // 450 * 200ms = 90 seconds max wait
+    await sleep(2000);
 
     while (attempts < maxAttempts) {
       try {
