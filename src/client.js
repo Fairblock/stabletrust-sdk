@@ -933,6 +933,7 @@ export class ConfidentialTransferClient {
     options = {},
   ) {
     const { maxAttempts = 225, intervalMs = 400 } = options;
+    await sleep(1000);
 
     try {
       for (let i = 0; i < maxAttempts; i++) {

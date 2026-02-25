@@ -38,9 +38,9 @@ The following contract addresses are available for confidential transfers on tes
 
 | Network(Testnet) | Chain ID | Contract Address                             |
 | :--------------- | :------- | :------------------------------------------- |
-| Stable           | 2201     | `0x29E4fd434758b1677c10854Fa81C2fc496D76E62` |
+| Stable           | 2201     | `0xb0b461aFA69b715d842c7fAb602f50D4cef83fe5` |
 | Arc              | 1244     | `0xf085e801a6FD9d03b09566a738734B7e2Bb065De` |
-| Base             | 84532    | `0x6FE45A71F5232a4E5e583Ae31A538360fB1e6aDb` |
+| Base             | 84532    | `0x1a06530765e942a1D26B74d9558e9a1EdA615867` |
 | Ethereum         | 11155111 | `0x81a2c161c0327464430658516eE74A669feFC7bC` |
 | Arbitrum         | 421614   | `0xa59462200F6E438c538b914eB5F980B3Fa723aA0` |
 | Tempo            | 42431    | `0xB7bdce025c8a25e341Cb55795f8ba865AB3e392C` |
