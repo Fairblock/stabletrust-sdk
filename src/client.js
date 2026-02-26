@@ -288,18 +288,24 @@ export class ConfidentialTransferClient {
       }
 
       if ((!c1 || c1 === "0x") && (!c2 || c2 === "0x")) {
-        return { amount: 0, ciphertext: null };
+        return { amount: 0n, ciphertext: null };
       }
 
       const wasm = await this._getWasm();
       const ciphertext = combineCiphertext(c1, c2);
-      const amount = decryptCiphertext(
+      const contractAmount = decryptCiphertext(
         ciphertext,
         privateKey,
         wasm.decrypt_ciphertext,
       );
+      const tokenAmount = ethers.formatUnits(contractAmount, 2);
+      const tokenContract = this._getTokenContract(tokenAddress);
+      const tokenUnits = await tokenContract.decimals();
 
-      return { amount, ciphertext };
+      return {
+        amount: ethers.parseUnits(tokenAmount, Number(tokenUnits)),
+        ciphertext,
+      };
     } catch (error) {
       throw new Error(`Failed to get balance: ${error.message}`);
     }
@@ -360,8 +366,11 @@ export class ConfidentialTransferClient {
         tokenAddress,
         "deposit",
       );
-      const depositAmount = BigInt(amount);
+
       const tokenContract = this._getTokenContract(tokenAddress);
+      const tokenDecimals = await tokenContract.decimals();
+      const depositAmount =
+        (BigInt(amount) * 100n) / 10n ** BigInt(tokenDecimals);
 
       // Check token balance and allowance in parallel
       const [tokenBalance, allowance] = await Promise.all([
@@ -370,11 +379,11 @@ export class ConfidentialTransferClient {
       ]);
       if (tokenBalance < depositAmount) {
         throw new Error(
-          `Insufficient token balance. Required: ${depositAmount}, Available: ${tokenBalance}`,
+          `Insufficient token balance. Required: ${amount}, Available: ${tokenBalance}`,
         );
       }
 
-      if (allowance < depositAmount) {
+      if (allowance < amount) {
         const approveTx = await tokenContract
           .connect(wallet)
           .approve(this.config.contractAddress, ethers.MaxUint256);
@@ -442,6 +451,10 @@ export class ConfidentialTransferClient {
       if (!amount || amount <= 0) {
         throw new Error("Transfer amount must be greater than 0");
       }
+      const tokenContract = this._getTokenContract(tokenAddress);
+      const tokenDecimals = await tokenContract.decimals();
+      const transferAmount =
+        (BigInt(amount) * 100n) / 10n ** BigInt(tokenDecimals);
 
       const senderAddress = await senderWallet.getAddress();
 
@@ -498,28 +511,28 @@ export class ConfidentialTransferClient {
           "Current balance ciphertext is required. Did you call getConfidentialBalance()?",
         );
       }
-      if (balanceSummary.amount < amount) {
+      if (balanceSummary.amount < BigInt(amount)) {
         throw new Error(
           `Insufficient balance. Required: ${amount}, Total: ${balanceSummary.amount}`,
         );
       }
       if (
         derivedCurrentBalance === undefined ||
-        derivedCurrentBalance < amount
+        derivedCurrentBalance < BigInt(amount)
       ) {
         throw new Error(
           `Insufficient balance. Required: ${amount}, Available: ${derivedCurrentBalance}`,
         );
       }
 
+      const currentBalanceContractScale =
+        (BigInt(derivedCurrentBalance) * 100n) / 10n ** BigInt(tokenDecimals);
+
       // Generate proof
       const proofInput = {
         current_balance_ciphertext: derivedCurrentBalanceCiphertext,
-        current_balance:
-          typeof derivedCurrentBalance === "bigint"
-            ? derivedCurrentBalance.toString()
-            : derivedCurrentBalance,
-        transfer_amount: typeof amount === "bigint" ? Number(amount) : amount,
+        current_balance: Number(currentBalanceContractScale),
+        transfer_amount: Number(transferAmount),
         source_keypair: derivedSenderKeys.privateKey,
         destination_pubkey: derivedRecipientPublicKey,
       };
@@ -753,6 +766,11 @@ export class ConfidentialTransferClient {
         throw new Error("Withdrawal amount must be greater than 0");
       }
 
+      const tokenContract = this._getTokenContract(tokenAddress);
+      const tokenDecimals = await tokenContract.decimals();
+      const withdrawAmount =
+        (BigInt(amount) * 100n) / 10n ** BigInt(tokenDecimals);
+
       // Auto-derive keys
       const derivedKeys = await this._deriveKeys(wallet);
       if (!derivedKeys?.privateKey) {
@@ -780,25 +798,25 @@ export class ConfidentialTransferClient {
           "Current balance ciphertext is required. Did you call getConfidentialBalance()?",
         );
       }
-      if (balanceSummary.amount < amount) {
+      if (balanceSummary.amount < BigInt(amount)) {
         throw new Error(
           `Insufficient balance. Required: ${amount}, Total: ${balanceSummary.amount}`,
         );
       }
-      if (currentBalance === undefined || currentBalance < amount) {
+      if (currentBalance === undefined || currentBalance < BigInt(amount)) {
         throw new Error(
           `Insufficient balance. Required: ${amount}, Available: ${currentBalance}`,
         );
       }
 
+      const currentBalanceContractScale =
+        (BigInt(currentBalance) * 100n) / 10n ** BigInt(tokenDecimals);
+
       // Generate withdrawal proof
       const withdrawInput = {
         current_balance_ciphertext: currentBalanceCiphertext,
-        current_balance:
-          typeof currentBalance === "bigint"
-            ? Number(currentBalance)
-            : currentBalance,
-        withdraw_amount: typeof amount === "bigint" ? Number(amount) : amount,
+        current_balance: Number(currentBalanceContractScale),
+        withdraw_amount: Number(withdrawAmount),
         keypair: derivedKeys.privateKey,
       };
 
@@ -819,7 +837,7 @@ export class ConfidentialTransferClient {
         .connect(wallet)
         .withdraw(
           tokenAddress,
-          BigInt(amount),
+          BigInt(withdrawAmount),
           ethers.getBytes(encodeWithdrawProof(proof.data)),
           useOffchainVerify,
         );

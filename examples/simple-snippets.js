@@ -19,9 +19,10 @@ async function minimalFlow() {
   // 2. Initialize Confidential Accounts (View Keys)
   await client.ensureAccount(sender);
   await client.ensureAccount(recipient);
-
+  const tokenContract = new ethers.Contract(TOKEN_ADDRESS, ERC20_ABI, provider);
+  const tokenDecimals = await tokenContract.decimals();
   const TOKEN = "0x78Cf24370174180738C5B8E352B6D14c83a6c9A9";
-  const amount = ethers.parseUnits("0.1", 2);
+  const amount = ethers.parseUnits("0.1", tokenDecimals);
   let res;
   // 3. DEPOSIT: Move public ERC20 into the confidential contract
   res = await client.confidentialDeposit(sender, TOKEN, amount);
@@ -32,11 +33,15 @@ async function minimalFlow() {
     sender,
     recipient.address,
     TOKEN,
-    ethers.parseUnits("0.05", 2),
+    ethers.parseUnits("0.05", tokenDecimals),
   );
   console.log("Transfer TX Hash:", EXPLORER_URL + res.hash);
   // 5. WITHDRAW: Convert confidential balance back to public ERC20
-  res = await client.withdraw(recipient, TOKEN, ethers.parseUnits("0.05", 2));
+  res = await client.withdraw(
+    recipient,
+    TOKEN,
+    ethers.parseUnits("0.05", tokenDecimals),
+  );
   console.log("Withdraw TX Hash:", EXPLORER_URL + res.hash);
   console.log("Confidential flow complete.");
 }

@@ -97,21 +97,23 @@ const tempoClient = new ConfidentialTransferClient(
 
 **Note on Tempo Chain**: The Tempo network (chainId 42431) uses token-based fees instead of native currency. The SDK automatically handles fee payment using PathUSD when detected.
 
-### Token Denomination (x100)
+### Token Denomination
 
-All confidential token amounts in this SDK use a fixed scale of 100. That means the SDK expects amounts in "token \* 100" units for deposit, transfer, and withdraw. When displaying balances, divide by 100.
+When interacting with the SDK for deposit, transfer, and withdraw operations, you should parse the token amount using the underlying token's decimals. When displaying the fetched balance, format it using the token's decimals.
 
-- To deposit 0.1 tokens, send 10 units (0.1 \* 100).
-- To display a balance, use $display = raw / 100$.
+- To deposit, transfer, or withdraw tokens, parse the amount using `ethers.parseUnits(amount, tokenDecimals)`.
+- To display a balance, format the raw amount using `ethers.formatUnits(balance.amount, tokenDecimals)`.
 
 **Recommended helpers (consistent with examples):**
 
 ```javascript
-// Use 2 decimals to match x100 scaling
-const amountToDeposit = ethers.parseUnits("0.1", 2); // 10
+// Fetch or define your token's decimals (e.g., 6 for USDC)
+const tokenDecimals = 6;
+
+const amountToDeposit = ethers.parseUnits("0.1", tokenDecimals);
 await client.confidentialDeposit(signer, tokenAddress, amountToDeposit);
 
-const amountToTransfer = ethers.parseUnits("0.05", 2); // 5
+const amountToTransfer = ethers.parseUnits("0.05", tokenDecimals);
 await client.confidentialTransfer(
   signer,
   recipientAddress,
@@ -119,7 +121,7 @@ await client.confidentialTransfer(
   amountToTransfer,
 );
 
-const amountToWithdraw = ethers.parseUnits("0.02", 2); // 2
+const amountToWithdraw = ethers.parseUnits("0.02", tokenDecimals);
 await client.withdraw(signer, tokenAddress, amountToWithdraw);
 
 const balance = await client.getConfidentialBalance(
@@ -127,7 +129,7 @@ const balance = await client.getConfidentialBalance(
   privateKey,
   tokenAddress,
 );
-console.log("Balance:", ethers.formatUnits(balance.amount, 2));
+console.log("Balance:", ethers.formatUnits(balance.amount, tokenDecimals));
 ```
 
 ### Key Functions
@@ -162,9 +164,9 @@ Retrieves the decrypted available and pending balances for a specific token, plu
   - `privateKey` (string): The private key for decryption.
   - `tokenAddress` (string): The token contract address.
 - **Returns**: An object containing:
-  - `amount` (number): The total (available + pending) in x100 units
-  - `available` (object): `{ amount, ciphertext }` in x100 units
-  - `pending` (object): `{ amount, ciphertext }` in x100 units
+  - `amount` (bigint): The total (available + pending)
+  - `available` (object): `{ amount, ciphertext }`
+  - `pending` (object): `{ amount, ciphertext }`
 
 #### `confidentialDeposit(signer, tokenAddress, amount, options)`
 
@@ -173,7 +175,7 @@ Deposits a specified amount of ERC20 tokens into the confidential contract, conv
 - **Parameters**:
   - `signer` (ethers.Signer): The transaction signer.
   - `tokenAddress` (string): The contract address of the ERC20 token.
-  - `amount` (bigint | string | number): The amount to deposit in x100 units.
+  - `amount` (bigint | string | number): The amount to deposit, parsed with token decimals.
   - `options` (object, optional):
     - `waitForFinalization` (boolean): Wait for deposit finalization. Default: `true`
 - **Returns**: A transaction receipt.
@@ -186,7 +188,7 @@ Executes a confidential transfer of tokens from the sender to a recipient. The a
   - `signer` (ethers.Signer): The sender's signer.
   - `recipientAddress` (string): The public address of the recipient.
   - `tokenAddress` (string): The token contract address.
-  - `amount` (number): The amount to transfer in x100 units.
+  - `amount` (bigint | string | number): The amount to transfer, parsed with token decimals.
   - `options` (object, optional):
     - `useOffchainVerify` (boolean): Use offchain verification. Default: `false`
     - `waitForFinalization` (boolean): Wait for transfer finalization. Default: `true`
@@ -199,7 +201,7 @@ Withdraws funds from the confidential "available" balance back to the public lay
 - **Parameters**:
   - `signer` (ethers.Signer): The user's signer.
   - `tokenAddress` (string): The token contract address.
-  - `amount` (number): The amount to withdraw in x100 units.
+  - `amount` (bigint | string | number): The amount to withdraw, parsed with token decimals.
   - `options` (object, optional):
     - `useOffchainVerify` (boolean): Use offchain verification. Default: `false`
     - `waitForFinalization` (boolean): Wait for withdrawal finalization. Default: `true`
@@ -288,7 +290,7 @@ When using the StableTrust SDK, follow these best practices to ensure the securi
 
 5. **Balance Verification**
 
-- Check available balance before initiating transfers (values are in x100 units)
+- Check available balance before initiating transfers
 - Be aware of transaction fees that may vary by network
 - On Tempo chain, ensure sufficient PathUSD balance for fee payment
 

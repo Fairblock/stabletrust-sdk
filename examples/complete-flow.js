@@ -1,7 +1,7 @@
 import { ethers } from "ethers";
 import dotenv from "dotenv";
 import { ConfidentialTransferClient } from "@fairblock/stabletrust";
-
+import { ERC20_ABI } from "./constants.js";
 dotenv.config();
 
 /**
@@ -55,6 +55,9 @@ async function main() {
     provider,
   );
 
+  const tokenContract = new ethers.Contract(TOKEN_ADDRESS, ERC20_ABI, provider);
+  const tokenDecimals = await tokenContract.decimals();
+
   console.log("Sender Address:", sender.address);
   console.log("Recipient Address:", recipient.address);
 
@@ -62,7 +65,7 @@ async function main() {
   const recipientKeys = await client.ensureAccount(recipient);
 
   // 1. DEPOSIT PHASE
-  const depositAmount = ethers.parseUnits("0.1", 2);
+  const depositAmount = ethers.parseUnits("0.1", tokenDecimals);
   const senderConfidentialBalanceBefore = await client.getConfidentialBalance(
     sender.address,
     senderKeys.privateKey,
@@ -71,7 +74,7 @@ async function main() {
 
   console.log(
     "Sender Confidential Balance (Pre-Deposit):",
-    ethers.formatUnits(senderConfidentialBalanceBefore.amount, 2),
+    ethers.formatUnits(senderConfidentialBalanceBefore.amount, tokenDecimals),
   );
 
   console.log("Depositing 0.1 tokens into confidential contract...");
@@ -91,11 +94,11 @@ async function main() {
   );
   console.log(
     "Sender Confidential Balance (Post-Deposit):",
-    ethers.formatUnits(senderConfidentialBalanceAfterDep.amount, 2),
+    ethers.formatUnits(senderConfidentialBalanceAfterDep.amount, tokenDecimals),
   );
 
   // 2. TRANSFER PHASE
-  const transferAmount = ethers.parseUnits("0.05", 2);
+  const transferAmount = ethers.parseUnits("0.05", tokenDecimals);
   const senderConfidentialBalanceBeforeTx = await client.getConfidentialBalance(
     sender.address,
     senderKeys.privateKey,
@@ -111,11 +114,14 @@ async function main() {
 
   console.log(
     "Sender Confidential Balance (Pre-Transfer):",
-    ethers.formatUnits(senderConfidentialBalanceBeforeTx.amount, 2),
+    ethers.formatUnits(senderConfidentialBalanceBeforeTx.amount, tokenDecimals),
   );
   console.log(
     "Recipient Confidential Balance (Pre-Transfer):",
-    ethers.formatUnits(recipientConfidentialBalanceBeforeTx.amount, 2),
+    ethers.formatUnits(
+      recipientConfidentialBalanceBeforeTx.amount,
+      tokenDecimals,
+    ),
   );
 
   console.log("Transferring 0.05 tokens confidentially to recipient...");
@@ -152,21 +158,21 @@ async function main() {
 
   console.log(
     "Sender Confidential Balance (Post-Transfer):",
-    ethers.formatUnits(senderConfidentialBalanceAfterTx.amount, 2),
+    ethers.formatUnits(senderConfidentialBalanceAfterTx.amount, tokenDecimals),
   );
   console.log(
     "Recipient Confidential Balance (Post-Transfer):",
-    ethers.formatUnits(recipientConfidentialBalanceAfterTx.amount, 2),
+    ethers.formatUnits(
+      recipientConfidentialBalanceAfterTx.amount,
+      tokenDecimals,
+    ),
     "\n",
   );
 
   // 3. WITHDRAW PHASE
-  const withdrawAmount = ethers.parseUnits("0.05", 2);
+  const withdrawAmount = ethers.parseUnits("0.05", tokenDecimals);
   console.log(
     "Withdrawing 0.05 tokens from confidential contract to recipient's public balance...",
-  );
-  const withdrawRes = await trackPerformance("WITHDRAW_TOKENS", () =>
-    client.withdraw(recipient, TOKEN_ADDRESS, withdrawAmount),
   );
   let recipientConfidentialBalanceBeforeWithdraw =
     await client.getConfidentialBalance(
@@ -177,8 +183,15 @@ async function main() {
 
   console.log(
     "Recipient Confidential Balance (Pre-Withdraw):",
-    ethers.formatUnits(recipientConfidentialBalanceBeforeWithdraw.amount, 2),
+    ethers.formatUnits(
+      recipientConfidentialBalanceBeforeWithdraw.amount,
+      tokenDecimals,
+    ),
   );
+  const withdrawRes = await trackPerformance("WITHDRAW_TOKENS", () =>
+    client.withdraw(recipient, TOKEN_ADDRESS, withdrawAmount),
+  );
+
   const withdrawHash = withdrawRes.result.hash;
   console.log(`Transaction Hash: ${withdrawHash}`);
   console.log(`View Transaction: ${EXPLORER_URL}${withdrawHash}`);
@@ -192,7 +205,10 @@ async function main() {
 
   console.log(
     "Recipient Confidential Balance (Final):",
-    ethers.formatUnits(recipientConfidentialBalanceAfterWithdraw.amount, 2),
+    ethers.formatUnits(
+      recipientConfidentialBalanceAfterWithdraw.amount,
+      tokenDecimals,
+    ),
   );
 
   console.log("\n=== Complete Flow Execution Finished ===");
