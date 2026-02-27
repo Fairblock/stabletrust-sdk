@@ -11,9 +11,6 @@ dotenv.config();
  * https://docs.fairblock.network/docs/confidential_transfers/technical_overview
  */
 
-// Optional override for custom confidential contract deployments.
-const CONTRACT_ADDRESS =
-  process.env.CONTRACT_ADDRESS || "0xb0b461aFA69b715d842c7fAb602f50D4cef83fe5";
 // Standard ERC20 token contract. Any ERC20 on this chain ID can be used.
 const TOKEN_ADDRESS =
   process.env.TOKEN_ADDRESS || "0x78Cf24370174180738C5B8E352B6D14c83a6c9A9";
@@ -42,11 +39,7 @@ async function trackPerformance(actionName, action) {
 async function main() {
   console.log("=== Starting Confidential Flow Performance Test ===\n");
 
-  const client = new ConfidentialTransferClient(
-    RPC_URL,
-    CONTRACT_ADDRESS,
-    Number(CHAIN_ID),
-  );
+  const client = new ConfidentialTransferClient(RPC_URL, Number(CHAIN_ID));
 
   const provider = new ethers.JsonRpcProvider(RPC_URL);
   const sender = new ethers.Wallet(process.env.SENDER_PRIVATE_KEY, provider);

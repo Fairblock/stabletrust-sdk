@@ -38,12 +38,12 @@ The following contract addresses are available for confidential transfers on tes
 
 | Network(Testnet) | Chain ID | Contract Address                             |
 | :--------------- | :------- | :------------------------------------------- |
-| Stable           | 2201     | `0xb0b461aFA69b715d842c7fAb602f50D4cef83fe5` |
-| Arc              | 1244     | `0xEa837218c7Ccd9eA1BCfB640e5c6aFE59952b4FA` |
-| Base             | 84532    | `0x1a06530765e942a1D26B74d9558e9a1EdA615867` |
-| Ethereum         | 11155111 | `0xABEa3399873b80f528Ee76286087b45ed38Fbf97` |
-| Arbitrum         | 421614   | `0x2131De660C6be8b535E6f17E171bFf7143E9E9F4` |
-| Tempo            | 42431    | `0xF3525FF8F592883f8fA2d89EfBe85637955Df487` |
+| Stable           | 2201     | `0xB96aa42b246a956B170fE426A72fB610E4976f9E` |
+| Arc              | 1244     | `0xb20aB54e1c6AE55B0DD11FEB7FFf3fF1E9631f19` |
+| Base             | 84532    | `0x962a8A7CD28BfFBb17C4F6Ec388782cca3ffd618` |
+| Ethereum         | 11155111 | `0x2E48F3D9b8F4aCA9E6AF0630eaB2ceB7A3f5eEd1` |
+| Arbitrum         | 421614   | `0x14Afd604971bee5b5fac52df2d56CaE421519Cc5` |
+| Tempo            | 42431    | `0x08B6563C95dfe3a4F5533CAA6F7D55a74FCb4F6c` |
 
 ## Usage
 
