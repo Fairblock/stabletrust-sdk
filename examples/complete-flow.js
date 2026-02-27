@@ -11,6 +11,9 @@ dotenv.config();
  * https://docs.fairblock.network/docs/confidential_transfers/technical_overview
  */
 
+// Optional override for custom confidential contract deployments.
+const CONTRACT_ADDRESS =
+  process.env.CONTRACT_ADDRESS || "0xB96aa42b246a956B170fE426A72fB610E4976f9E";
 // Standard ERC20 token contract. Any ERC20 on this chain ID can be used.
 const TOKEN_ADDRESS =
   process.env.TOKEN_ADDRESS || "0x78Cf24370174180738C5B8E352B6D14c83a6c9A9";
