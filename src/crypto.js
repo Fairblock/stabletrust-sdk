@@ -11,7 +11,7 @@ import { ethers } from "ethers";
  */
 export async function deriveKeys(wallet, config, generateKeypair) {
   const domain = {
-    name: "Fairblock",
+    name: "ConfidentialTokens",
     version: "1",
     chainId: config.chainId,
     verifyingContract: config.contractAddress,
@@ -26,15 +26,15 @@ export async function deriveKeys(wallet, config, generateKeypair) {
   };
 
   const contextHash = ethers.keccak256(
-    ethers.solidityPacked(
+    ethers.AbiCoder.defaultAbiCoder().encode(
       ["uint256", "address", "address", "string"],
       [config.chainId, config.contractAddress, ethers.ZeroAddress, "main"],
     ),
   );
-
+  const userAddress = wallet.address.toLowerCase();
   const message = {
     purpose: "homomorphic-key-derive-v1",
-    user: wallet.address,
+    user: userAddress,
     context: contextHash,
   };
 
@@ -42,7 +42,7 @@ export async function deriveKeys(wallet, config, generateKeypair) {
   const domainContext = JSON.stringify({
     chainId: config.chainId.toString(),
     verifyingContract: config.contractAddress,
-    user: wallet.address,
+    user: userAddress,
     purpose: "homomorphic-key-derive-v1",
     version: "1",
   });
