@@ -13,12 +13,13 @@ dotenv.config();
 
 // Standard ERC20 token contract. Any ERC20 on this chain ID can be used.
 const TOKEN_ADDRESS =
-  process.env.TOKEN_ADDRESS || "0x78Cf24370174180738C5B8E352B6D14c83a6c9A9";
+  process.env.TOKEN_ADDRESS || "0x036CbD53842c5426634e7929541eC2318f3dCF7e";
 const RPC_URL =
-  process.env.ETHEREUM_RPC_URL || "https://rpc.testnet.stable.xyz";
+  process.env.ETHEREUM_RPC_URL ||
+  "https://base-sepolia.g.alchemy.com/v2/z__TRtzTHQsONlhGYw8Q4";
 const EXPLORER_URL =
-  process.env.EXPLORER_URL || "https://testnet.stablescan.xyz/tx/";
-const CHAIN_ID = process.env.CHAIN_ID || 2201;
+  process.env.EXPLORER_URL || "https://sepolia.basescan.org//tx/";
+const CHAIN_ID = process.env.CHAIN_ID || 84532;
 
 /**
  * Performance Utility: Tracks execution time and provides timestamps
