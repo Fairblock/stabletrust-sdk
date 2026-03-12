@@ -1,5 +1,8 @@
 import { ethers } from "ethers";
-
+// Pinata uploads API endpoint
+// Docs: https://docs.pinata.cloud
+const PINATA_UPLOAD_URL = "https://uploads.pinata.cloud/v3/files";
+const PINATA_JWT = process.env.PINATA_JWT;
 /**
  * Encodes the ZK-Proof data for a transfer into a format the Solidity contract expects.
  *
@@ -81,4 +84,79 @@ export async function waitForCondition(
     await sleep(intervalMs);
   }
   throw new Error(`Timeout waiting for ${actionLabel}`);
+}
+
+/**
+ * Upload a JSON-serializable object to IPFS and return its CID (as a string).
+ * The object will be stored as a UTF-8 JSON blob.
+ *
+ * @param {any} data - JSON-serializable data to store.
+ * @returns {Promise<string>} The CID string.
+ */
+export async function uploadJsonToIpfs(data) {
+  if (!PINATA_JWT) {
+    throw new Error("REACT_APP_PINATA_JWT is not set");
+  }
+
+  const json = JSON.stringify(data);
+  const blob = new Blob([json], { type: "application/json" });
+
+  const form = new FormData();
+  form.append("file", blob, "proof.json");
+  form.append("network", "public");
+  form.append("name", "zk-proof");
+
+  const res = await fetch(PINATA_UPLOAD_URL, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${PINATA_JWT}`,
+    },
+    body: form,
+  });
+
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Pinata upload failed: ${text}`);
+  }
+
+  const jsonRes = await res.json();
+  return jsonRes?.data?.cid?.toString();
+}
+
+/**
+ * Upload raw bytes to IPFS (Pinata) and return the CID.
+ *
+ * @param {Uint8Array|ArrayBuffer} bytes - Raw proof bytes.
+ * @param {string} [name='proof.bin'] - Optional file name metadata.
+ * @returns {Promise<string>} The CID string.
+ */
+export async function uploadBytesToIpfs(bytes, name = "proof.bin") {
+  if (!PINATA_JWT) {
+    throw new Error("REACT_APP_PINATA_JWT is not set");
+  }
+
+  const uint8 = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
+
+  const blob = new Blob([uint8], { type: "application/octet-stream" });
+
+  const form = new FormData();
+  form.append("file", blob, name);
+  form.append("network", "public");
+  form.append("name", name);
+
+  const res = await fetch(PINATA_UPLOAD_URL, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${PINATA_JWT}`,
+    },
+    body: form,
+  });
+
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Pinata upload failed: ${text}`);
+  }
+
+  const jsonRes = await res.json();
+  return jsonRes?.data?.cid?.toString();
 }
