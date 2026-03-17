@@ -163,9 +163,9 @@ async function main() {
   );
 
   // 3. WITHDRAW PHASE
-  const withdrawAmount = ethers.parseUnits("0.05", tokenDecimals);
+  const withdrawAmount = ethers.parseUnits("0.025", tokenDecimals);
   console.log(
-    "Withdrawing 0.05 tokens from confidential contract to recipient's public balance...",
+    "Withdrawing 0.025 tokens from confidential contract to recipient's public balance...",
   );
   let recipientConfidentialBalanceBeforeWithdraw =
     await client.getConfidentialBalance(
