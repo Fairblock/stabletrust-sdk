@@ -30,7 +30,7 @@ const CHAINS = [
     network: "Base",
     chainId: 84532,
     tokenAddress: "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
-    rpcUrl: "https://base-sepolia.g.alchemy.com/v2/fSmnOhWOKhURXIcGCsq-M",
+    rpcUrl: "https://base-testnet.api.pocket.network",
     explorerUrl: "https://sepolia.basescan.org/tx/",
   },
   {
