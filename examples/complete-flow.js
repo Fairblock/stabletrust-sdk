@@ -281,9 +281,9 @@ async function runChainFlow(chain, senderPrivateKey, recipientPrivateKey) {
 
     // 3. WITHDRAW PHASE
     console.log("\n--- Phase 3: Withdraw ---");
-    const withdrawAmount = ethers.parseUnits("0.05", tokenDecimals);
+    const withdrawAmount = ethers.parseUnits("0.025", tokenDecimals);
     console.log(
-      "Withdrawing 0.05 tokens from confidential contract to recipient's public balance...",
+      "Withdrawing 0.025 tokens from confidential contract to recipient's public balance...",
     );
 
     const recipientConfidentialBalanceBeforeWithdraw =

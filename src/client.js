@@ -648,18 +648,29 @@ export class ConfidentialTransferClient {
       }
 
       const address = await wallet.getAddress();
-      await this._applyPendingIfNeeded(
-        wallet,
-        derivedKeys.privateKey,
-        tokenAddress,
-        "withdraw",
-      );
 
-      const balanceSummary = await this.getConfidentialBalance(
+      // Fetch balance first — only apply pending if available is insufficient
+      let balanceSummary = await this.getConfidentialBalance(
         address,
         derivedKeys.privateKey,
         tokenAddress,
       );
+
+      if (balanceSummary.available.amount < BigInt(amount)) {
+        await this._applyPendingIfNeeded(
+          wallet,
+          derivedKeys.privateKey,
+          tokenAddress,
+          "withdraw",
+        );
+        // Re-fetch after applying pending
+        balanceSummary = await this.getConfidentialBalance(
+          address,
+          derivedKeys.privateKey,
+          tokenAddress,
+        );
+      }
+
       const currentBalanceCiphertext = balanceSummary.available.ciphertext;
       const currentBalance = balanceSummary.available.amount;
 
