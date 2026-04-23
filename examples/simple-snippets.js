@@ -1,6 +1,7 @@
 import { ethers } from "ethers";
 import dotenv from "dotenv";
 import { ConfidentialTransferClient } from "@fairblock/stabletrust";
+import { ERC20_ABI } from "./constants.js";
 dotenv.config();
 const RPC_URL = process.env.RPC_URL || "https://rpc.testnet.stable.xyz";
 const EXPLORER_URL =
@@ -19,9 +20,9 @@ async function minimalFlow() {
   // 2. Initialize Confidential Accounts (View Keys)
   await client.ensureAccount(sender);
   await client.ensureAccount(recipient);
-  const tokenContract = new ethers.Contract(TOKEN_ADDRESS, ERC20_ABI, provider);
-  const tokenDecimals = await tokenContract.decimals();
   const TOKEN = "0x78Cf24370174180738C5B8E352B6D14c83a6c9A9";
+  const tokenContract = new ethers.Contract(TOKEN, ERC20_ABI, provider);
+  const tokenDecimals = await tokenContract.decimals();
   const amount = ethers.parseUnits("0.1", tokenDecimals);
   let res;
   // 3. DEPOSIT: Move public ERC20 into the confidential contract

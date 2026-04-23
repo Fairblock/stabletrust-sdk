@@ -31,7 +31,7 @@ export async function deriveKeys(wallet, config, generateKeypair) {
       [config.chainId, config.contractAddress, ethers.ZeroAddress, "main"],
     ),
   );
-  const userAddress = wallet.address.toLowerCase();
+  const userAddress = (await wallet.getAddress()).toLowerCase();
   const message = {
     purpose: "homomorphic-key-derive-v1",
     user: userAddress,
