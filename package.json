@@ -1,6 +1,6 @@
 {
   "name": "@fairblock/stabletrust",
-  "version": "1.0.18",
+  "version": "1.0.19",
   "description": "SDK for confidential transfers using homomorphic encryption and zero-knowledge proofs",
   "main": "src/index.js",
   "types": "src/index.d.ts",
