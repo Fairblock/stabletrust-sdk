@@ -327,7 +327,7 @@ export class ConfidentialTransferClient {
       tokenAddress,
     );
 
-    if (pendingBalance.amount > 0) {
+    if (pendingBalance.amount > 0n) {
       try {
         await this._applyPending(wallet, { waitForFinalization: true });
       } catch (error) {
@@ -387,7 +387,7 @@ export class ConfidentialTransferClient {
         );
       }
 
-      if (allowance < amount) {
+      if (allowance < BigInt(amount)) {
         const approveTx = await tokenContract
           .connect(wallet)
           .approve(this.config.contractAddress, ethers.MaxUint256);
@@ -452,7 +452,7 @@ export class ConfidentialTransferClient {
       if (!tokenAddress || !ethers.isAddress(tokenAddress)) {
         throw new Error(`Invalid token address: ${tokenAddress}`);
       }
-      if (!amount || amount <= 0) {
+      if (!amount || BigInt(amount) <= 0n) {
         throw new Error("Transfer amount must be greater than 0");
       }
       const tokenContract = this._getTokenContract(tokenAddress);
@@ -632,7 +632,7 @@ export class ConfidentialTransferClient {
       if (!tokenAddress || !ethers.isAddress(tokenAddress)) {
         throw new Error(`Invalid token address: ${tokenAddress}`);
       }
-      if (!amount || amount <= 0) {
+      if (!amount || BigInt(amount) <= 0n) {
         throw new Error("Withdrawal amount must be greater than 0");
       }
 
@@ -865,7 +865,7 @@ export class ConfidentialTransferClient {
           tokenAddress,
         );
 
-        if (pending.amount > 0) {
+        if (pending.amount > 0n) {
           return pending;
         }
 
