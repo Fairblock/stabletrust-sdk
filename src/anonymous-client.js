@@ -813,15 +813,7 @@ export class AnonymousTransferClient {
         if (amount === undefined || amount === null)
           throw new Error("amount is required when auto-generating proof");
 
-        const tokenContract = new ethers.Contract(
-          token,
-          ["function decimals() view returns (uint8)"],
-          this.provider,
-        );
-        const decimals = await tokenContract.decimals();
-        const transferAmountContractScale = Number(
-          (BigInt(amount) * 100n) / 10n ** BigInt(decimals),
-        );
+        const transferAmountContractScale = Number(BigInt(amount));
 
         // Auto-resolve destinationPublicKey from the recipient's on-chain confidential account
         let destPubkey = destinationPublicKey;
@@ -955,15 +947,7 @@ export class AnonymousTransferClient {
         if (amount === undefined || amount === null)
           throw new Error("amount is required when auto-generating proof");
 
-        const tokenContract = new ethers.Contract(
-          token,
-          ["function decimals() view returns (uint8)"],
-          this.provider,
-        );
-        const decimals = await tokenContract.decimals();
-        const transferAmountContractScale = Number(
-          (BigInt(amount) * 100n) / 10n ** BigInt(decimals),
-        );
+        const transferAmountContractScale = Number(BigInt(amount));
 
         // Auto-resolve destinationPublicKey from the recipient's anonymous account on-chain
         let destPubkey = destinationPublicKey;
@@ -1144,15 +1128,7 @@ export class AnonymousTransferClient {
         if (!elGamalPrivateKey)
           throw new Error("Either proof or elGamalPrivateKey must be provided");
 
-        const tokenContract = new ethers.Contract(
-          token,
-          ["function decimals() view returns (uint8)"],
-          this.provider,
-        );
-        const decimals = await tokenContract.decimals();
-        const withdrawAmountContractScale = Number(
-          (amountBig * 100n) / 10n ** BigInt(decimals),
-        );
+        const withdrawAmountContractScale = Number(amountBig);
 
         const { ciphertext, amount: currentBalance } =
           await this._decryptAnonymousBalance(

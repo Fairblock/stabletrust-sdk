@@ -1,7 +1,7 @@
 /**
  * Anonymous Confidential Transfer — Basic Flow
  *
- *   [1] Create two anonymous accounts (anon1, anon2) — idempotent
+ *   [1] Create two anonymous accounts (anon1, anon2)
  *   [2] Deposit tokens into anon1
  *   [3] Transfer anon1 → anon2
  *   [4] Apply pending balance for anon2
@@ -9,8 +9,6 @@
  *
  * Run:
  *   node examples/anonymous-flow.js
- *
- * Re-running the script is safe — existing accounts with matching keys are reused.
  */
 
 import { ethers } from "ethers";
@@ -25,7 +23,7 @@ const EVM_RPC = process.env.EVM_RPC ?? "http://127.0.0.1:8545";
 const FAIRYCLOAK_URL = process.env.FAIRYCLOAK_URL ?? "http://127.0.0.1:8080";
 const CHAIN_ID = Number(process.env.CHAIN_ID ?? "31337");
 const DIAMOND_ADDRESS =
-  process.env.DIAMOND_ADDRESS ?? "0x257c5b58c8e699b3a4cbeca4eaeba8a7cdf2685e";
+  process.env.DIAMOND_ADDRESS ?? "0x0b4d21fb147682591e11f6c2ede750e656c571e6";
 const TOKEN_ADDRESS =
   process.env.TOKEN_ADDRESS ?? "0xE915164570b027C2A0FfadcB1B672192E35BF008";
 const TOKEN_DECIMALS = Number(process.env.TOKEN_DECIMALS ?? "6");
@@ -70,35 +68,6 @@ function diff(prev, next) {
     pending: next.pending - prev.pending,
     total: next.amount - prev.amount,
   };
-}
-
-/**
- * Create an anonymous account only if it doesn't already exist with matching keys.
- * Returns { accountId, created, resp? }.
- */
-async function findOrCreate(client, authWallet, predictedId, keys) {
-  const info = await client.getAnonymousAccountInfo(predictedId);
-  if (info.exists) {
-    // Compare on-chain pubkey to the derived key (base64 → hex)
-    const derivedHex =
-      "0x" + Buffer.from(keys.publicKey, "base64").toString("hex");
-    if (info.elgamalPubkey.toLowerCase() === derivedHex.toLowerCase()) {
-      log(
-        `  account ${predictedId} already exists with matching keys — reusing`,
-      );
-      return { accountId: predictedId, created: false };
-    }
-    throw new Error(
-      `Account ${predictedId} exists but elgamal pubkey does not match derived key. ` +
-        `Expected ${derivedHex}, got ${info.elgamalPubkey}`,
-    );
-  }
-
-  log(`  submitting createAccount (predicted id=${predictedId}) …`);
-  const resp = await client.createAccount(authWallet, keys.publicKey);
-  log(`  request_id: ${resp.request_id}  status: ${resp.status}`);
-  if (resp.error) log(`  [!] Error: ${resp.error}`);
-  return { accountId: predictedId, created: true, resp };
 }
 
 /**
@@ -171,28 +140,23 @@ async function main() {
   log("anon1 pubkey:", anon1Keys.publicKey);
   log("anon2 pubkey:", anon2Keys.publicKey);
 
-  const [fc1, fc2] = await Promise.all([
-    findOrCreate(client, anon1Wallet, anon1Id, anon1Keys),
-    findOrCreate(client, anon2Wallet, anon2Id, anon2Keys),
-  ]);
+  log(`  creating anon1 (id=${anon1Id}) …`);
+  const cr1 = await client.createAccount(anon1Wallet, anon1Keys.publicKey);
+  log(`  request_id: ${cr1.request_id}  status: ${cr1.status}`);
+  if (cr1.error) log(`  [!] Error: ${cr1.error}`);
 
-  // Wait for Fairycloak to confirm newly created accounts
-  const pendingCreates = [];
-  if (fc1.created && fc1.resp)
-    pendingCreates.push(
-      client.waitForRequest(fc1.resp.request_id, { timeoutMs: 180_000 }),
-    );
-  if (fc2.created && fc2.resp)
-    pendingCreates.push(
-      client.waitForRequest(fc2.resp.request_id, { timeoutMs: 180_000 }),
-    );
-  if (pendingCreates.length > 0) {
-    log("Waiting for Fairycloak to confirm account creations …");
-    const results = await Promise.all(pendingCreates);
-    results.forEach((r) => {
-      if (r.error) log("  [!] create failed:", r.error);
-    });
-  }
+  log(`  creating anon2 (id=${anon2Id}) …`);
+  const cr2 = await client.createAccount(anon2Wallet, anon2Keys.publicKey);
+  log(`  request_id: ${cr2.request_id}  status: ${cr2.status}`);
+  if (cr2.error) log(`  [!] Error: ${cr2.error}`);
+
+  log("Waiting for Fairycloak to confirm account creations …");
+  const [r1, r2] = await Promise.all([
+    client.waitForRequest(cr1.request_id, { timeoutMs: 180_000 }),
+    client.waitForRequest(cr2.request_id, { timeoutMs: 180_000 }),
+  ]);
+  if (r1.error) log("  [!] create anon1 failed:", r1.error);
+  if (r2.error) log("  [!] create anon2 failed:", r2.error);
 
   await waitForAccountReady(client, anon1Id, { label: "anon1" });
   await waitForAccountReady(client, anon2Id, { label: "anon2" });
@@ -224,7 +188,7 @@ async function main() {
   // ── [2] Deposit ──────────────────────────────────────────────────────────────
 
   console.log("\n── [2] Deposit into anon1 ──────────────────────────────");
-  log(`Depositing ${fmt(DEPOSIT_AMOUNT)} USDC into anon1 (anon1 pays gas) …`);
+  log(`Depositing ${fmt(DEPOSIT_AMOUNT, TOKEN_DECIMALS)} USDC into anon1 (anon1 pays gas) …`);
 
   const dep = await client.deposit(
     anon1Wallet,
@@ -255,7 +219,7 @@ async function main() {
   // ── [3] Transfer anon1 → anon2 ───────────────────────────────────────────────
 
   console.log("\n── [3] Transfer anon1 → anon2 ──────────────────────────");
-  log(`Transferring ${fmt(TRANSFER_AMOUNT)} USDC …`);
+  log(`Transferring ${fmt(TRANSFER_AMOUNT, TOKEN_DECIMALS)} USDC …`);
 
   const txAnon = await client.transferToAnonymous(anon1Wallet, anon1Id, {
     recipientId: anon2Id,
@@ -327,7 +291,7 @@ async function main() {
   // ── [5] Withdraw anon2 → public address ──────────────────────────────────────
 
   console.log("\n── [5] Withdraw from anon2 ─────────────────────────────");
-  log(`Withdrawing ${fmt(WITHDRAW_AMOUNT)} USDC → ${withdrawDest} …`);
+  log(`Withdrawing ${fmt(WITHDRAW_AMOUNT, TOKEN_DECIMALS)} USDC → ${withdrawDest} …`);
 
   const wd = await client.withdraw(anon2Wallet, anon2Id, {
     destination: withdrawDest,
@@ -361,9 +325,9 @@ async function main() {
   console.log("\n═══════════════════════════════════════════════════════");
   console.log("  ✅ Anonymous flow completed!");
   console.log("═══════════════════════════════════════════════════════");
-  log("Deposited  :", fmt(DEPOSIT_AMOUNT), "USDC → anon1");
-  log("Transferred:", fmt(TRANSFER_AMOUNT), "USDC → anon2");
-  log("Withdrawn  :", fmt(WITHDRAW_AMOUNT), "USDC →", withdrawDest);
+  log("Deposited  :", fmt(DEPOSIT_AMOUNT, TOKEN_DECIMALS), "USDC → anon1");
+  log("Transferred:", fmt(TRANSFER_AMOUNT, TOKEN_DECIMALS), "USDC → anon2");
+  log("Withdrawn  :", fmt(WITHDRAW_AMOUNT, TOKEN_DECIMALS), "USDC →", withdrawDest);
 }
 
 main().catch((err) => {
