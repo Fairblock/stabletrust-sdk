@@ -1,4 +1,5 @@
 export { ConfidentialTransferClient } from "./client.js";
+export { AnonymousTransferClient } from "./anonymous-client.js";
 export { deriveKeys, decryptCiphertext, combineCiphertext } from "./crypto.js";
 export { encodeTransferProof, encodeWithdrawProof } from "./utils.js";
 export {
