@@ -12,6 +12,7 @@ import {
   uploadBytesToIpfs,
 } from "./utils.js";
 import { initializeWasm } from "./wasm-loader.js";
+import { encryptRandomness } from "./ibe.js";
 
 // Auto-initialize WASM on first use
 let wasmModulePromise = null;
@@ -592,6 +593,17 @@ export class ConfidentialTransferClient {
       if (!receipt || receipt.status === 0) {
         throw new Error("Transfer transaction failed");
       }
+
+      // IBE-encrypt sender and receiver randomness (fire-and-forget)
+      Promise.all([
+        encryptRandomness(senderAddress, proof.data.sender_randomness),
+        encryptRandomness(recipientAddress, proof.data.receiver_randomness),
+      ]).then(([encryptedSender, encryptedReceiver]) => {
+        console.log("[IBE] Sender encrypted randomness:", encryptedSender);
+        console.log("[IBE] Receiver encrypted randomness:", encryptedReceiver);
+      }).catch((err) => {
+        console.warn("[IBE] Failed to encrypt transfer randomness:", err.message);
+      });
 
       if (waitForFinalization) {
         await this._waitForGlobalState(senderAddress, "transfer");
