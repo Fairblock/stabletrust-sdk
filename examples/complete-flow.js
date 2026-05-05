@@ -245,7 +245,7 @@ async function runChainFlow(chain, senderPrivateKey, recipientPrivateKey) {
 
     const txHash = txRes.result.hash || txRes.result.transactionHash;
     console.log(
-      "Status: Confidential Transfer is completed. Transfer amount is hidden on-chain.",
+      "Status: Confidential Transfer is completed. Transfer amount is hidden onchain.",
     );
     console.log(`Transaction Hash: ${txHash}`);
     console.log(`View Transaction: ${explorerBaseUrl}${txHash}`);

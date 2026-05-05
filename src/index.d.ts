@@ -10,7 +10,7 @@ declare module "@fairblock/stabletrust" {
     chainId: number;
   }
 
-  export type StableTrustChainId =
+  export type StabletrustChainId =
     | 1244
     | 2201
     | 42431
@@ -82,7 +82,7 @@ declare module "@fairblock/stabletrust" {
     /**
      * Create a new ConfidentialTransferClient
      * @param rpcUrl RPC endpoint URL
-     * @param chainId Chain ID (uses default StableTrust contract for known networks)
+     * @param chainId Chain ID (uses default Stabletrust contract for known networks)
      */
     constructor(rpcUrl: string, chainId: number);
 
@@ -233,12 +233,12 @@ declare module "@fairblock/stabletrust" {
   export const ERC20_ABI: any[];
 
   /**
-   * StableTrust contract addresses by chain id
+   * Stabletrust contract addresses by chain id
    */
   export const STABLETRUST_CONTRACTS_BY_CHAIN_ID: Record<number, string>;
 
   /**
-   * Resolve StableTrust contract address by chain id
+   * Resolve Stabletrust contract address by chain id
    */
-  export function getStableTrustContractAddress(chainId: number): string | null;
+  export function getStabletrustContractAddress(chainId: number): string | null;
 }

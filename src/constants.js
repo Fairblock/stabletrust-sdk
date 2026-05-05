@@ -33,6 +33,6 @@ export const STABLETRUST_CONTRACTS_BY_CHAIN_ID = Object.freeze({
   42431: "0xE559fB936C69c46E216bf61B07C16bF1a6d444aa", //Tempo
 });
 
-export function getStableTrustContractAddress(chainId) {
+export function getStabletrustContractAddress(chainId) {
   return STABLETRUST_CONTRACTS_BY_CHAIN_ID[Number(chainId)] || null;
 }

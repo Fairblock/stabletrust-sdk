@@ -2,7 +2,7 @@ import { ethers } from "ethers";
 import {
   CONTRACT_ABI,
   ERC20_ABI,
-  getStableTrustContractAddress,
+  getStabletrustContractAddress,
 } from "./constants.js";
 import { deriveKeys, decryptCiphertext, combineCiphertext } from "./crypto.js";
 import {
@@ -45,12 +45,12 @@ export class ConfidentialTransferClient {
 
     if (typeof contractAddressOrChainId === "number" && chainId === undefined) {
       resolvedChainId = contractAddressOrChainId;
-      resolvedContractAddress = getStableTrustContractAddress(resolvedChainId);
+      resolvedContractAddress = getStabletrustContractAddress(resolvedChainId);
     } else {
       resolvedChainId = chainId;
       resolvedContractAddress =
         contractAddressOrChainId ||
-        getStableTrustContractAddress(resolvedChainId);
+        getStabletrustContractAddress(resolvedChainId);
     }
 
     if (!resolvedChainId) {
@@ -61,7 +61,7 @@ export class ConfidentialTransferClient {
         .map(String)
         .join(", ");
       throw new Error(
-        `contractAddress is required for chainId ${resolvedChainId}. No default StableTrust contract is configured for this chain. Supported chainIds: ${supportedChainIds}`,
+        `contractAddress is required for chainId ${resolvedChainId}. No default Stabletrust contract is configured for this chain. Supported chainIds: ${supportedChainIds}`,
       );
     }
     if (!ethers.isAddress(resolvedContractAddress)) {

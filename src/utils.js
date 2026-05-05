@@ -56,7 +56,7 @@ export function logTransaction(hash, explorerUrl, isConfidential = false) {
   console.log(`Transaction submitted: ${explorerUrl}${hash}`);
   if (isConfidential) {
     console.log(
-      `Note: This is a confidential transaction - the amount is not visible on-chain.`,
+      `Note: This is a confidential transaction - the amount is not visible onchain.`,
     );
   }
 }

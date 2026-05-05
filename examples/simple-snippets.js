@@ -28,7 +28,7 @@ async function minimalFlow() {
   // 3. DEPOSIT: Move public ERC20 into the confidential contract
   res = await client.confidentialDeposit(sender, TOKEN, amount);
   console.log("Deposit TX Hash:", EXPLORER_URL + res.hash);
-  // 4. TRANSFER: Privacy-preserving transfer (On-chain amount is hidden)
+  // 4. TRANSFER: Privacy-preserving transfer (onchain amount is hidden)
   // This moves funds from Sender's 'Available' to Recipient's 'Pending' balance
   res = await client.confidentialTransfer(
     sender,

@@ -2,12 +2,12 @@
 
 ## Overview
 
-The StableTrust SDK by Fairblock provides a robust interface for executing confidential transfers using homomorphic encryption and zero-knowledge proofs. This package enables developers to integrate confidentiality features directly into their applications, allowing for secure token deposits, private transfers, and withdrawals while maintaining the integrity and auditability of the underlying blockchain transactions.
+The Stabletrust SDK by Fairblock provides a robust interface for executing confidential transfers using homomorphic encryption and zero-knowledge proofs. This package enables developers to integrate confidentiality features directly into their applications, allowing for secure token deposits, private transfers, and withdrawals while maintaining the integrity and auditability of the underlying blockchain transactions.
 
 For a comprehensive technical understanding of the architecture and cryptographic primitives, please refer to the following documentation:
 
 - **Technical Overview**: [Fairblock Confidential Transfers](https://docs.fairblock.network/docs/confidential_transfers/technical_overview)
-- **StableTrust Protocol**: [StableTrust Documentation](https://docs.fairblock.network/docs/confidential_transfers/stabletrust)
+- **Stabletrust Protocol**: [Stabletrust Documentation](https://docs.fairblock.network/docs/confidential_transfers/stabletrust)
 - **Confidential Transactions**: [Transaction Mechanics](https://docs.fairblock.network/docs/confidential_transfers/confidential_transactions)
 
 ## Requirements
@@ -57,7 +57,7 @@ Import and initialize the client with your network configuration.
 import { ConfidentialTransferClient } from "@fairblock/stabletrust";
 import { ethers } from "ethers";
 
-// Configuration for Base Sepolia (uses SDK default StableTrust contract for chainId 84532)
+// Configuration for Base Sepolia (uses SDK default Stabletrust contract for chainId 84532)
 const client = new ConfidentialTransferClient(
   "https://sepolia.base.org",
   84532,
@@ -69,7 +69,7 @@ If you are using a custom deployment, you can still pass an explicit contract ad
 ```javascript
 const customClient = new ConfidentialTransferClient(
   "https://sepolia.base.org",
-  "0xYourCustomStableTrustContract",
+  "0xYourCustomStabletrustContract",
   84532,
 );
 ```
@@ -146,7 +146,7 @@ Fetches account core information from the contract.
 
 #### `ensureAccount(signer, options)`
 
-Initializes or retrieves the cryptographic keys associated with an account. This step is required before performing any confidential operations. Automatically creates the account on-chain if it doesn't exist.
+Initializes or retrieves the cryptographic keys associated with an account. This step is required before performing any confidential operations. Automatically creates the account onchain if it doesn't exist.
 
 - **Parameters**:
   - `signer` (ethers.Signer): The ethers.js signer instance for the user.
@@ -266,7 +266,7 @@ The following are estimated execution times for standard operations within the c
 
 ## Security Considerations
 
-When using the StableTrust SDK, follow these best practices to ensure the security of your confidential transactions:
+When using the Stabletrust SDK, follow these best practices to ensure the security of your confidential transactions:
 
 1. **Private Key Management**
    - Never expose or log private keys or seed phrases
