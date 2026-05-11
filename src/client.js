@@ -13,6 +13,7 @@ import {
 } from "./utils.js";
 import { initializeWasm } from "./wasm-loader.js";
 import { encryptRandomness } from "./ibe.js";
+import { walletLink, createRequest } from "./backend.js";
 
 // Auto-initialize WASM on first use
 let wasmModulePromise = null;
@@ -35,7 +36,7 @@ export class ConfidentialTransferClient {
    * @param {string|number} contractAddressOrChainId - Contract address or chain ID
    * @param {number} [chainId] - Chain ID when contract address is provided
    */
-  constructor(rpcUrl, contractAddressOrChainId, chainId) {
+  constructor(rpcUrl, contractAddressOrChainId, chainId, options = {}) {
     // Validate required config
     if (!rpcUrl) {
       throw new Error("rpcUrl is required");
@@ -74,6 +75,7 @@ export class ConfidentialTransferClient {
       rpcUrl,
       contractAddress: ethers.getAddress(resolvedContractAddress),
       chainId: Number(resolvedChainId),
+      apiBaseUrl: options.apiBaseUrl || null,
     };
 
     // WASM will be auto-initialized on first use
@@ -594,15 +596,51 @@ export class ConfidentialTransferClient {
         throw new Error("Transfer transaction failed");
       }
 
-      // IBE-encrypt sender and receiver randomness (fire-and-forget)
+      // IBE-encrypt randomness then persist to backend (fire-and-forget)
+      const txHash = receipt.hash;
+      const apiBaseUrl = this.config.apiBaseUrl || undefined;
       Promise.all([
         encryptRandomness(senderAddress, proof.data.sender_randomness),
         encryptRandomness(recipientAddress, proof.data.receiver_randomness),
-      ]).then(([encryptedSender, encryptedReceiver]) => {
+      ]).then(async ([encryptedSender, encryptedReceiver]) => {
         console.log("[IBE] Sender encrypted randomness:", encryptedSender);
         console.log("[IBE] Receiver encrypted randomness:", encryptedReceiver);
+
+        // Bind both wallets then create both request rows
+        await Promise.all([
+          walletLink(senderAddress, apiBaseUrl),
+          walletLink(recipientAddress, apiBaseUrl),
+        ]);
+
+        const baseRequest = {
+          transactionHash: txHash,
+          chainId: this.config.chainId,
+          operationKind: 2,
+          status: "pending",
+        };
+
+        await Promise.all([
+          createRequest({
+            ...baseRequest,
+            requestId: txHash,
+            userAddress: senderAddress.toLowerCase(),
+            type: "transfer",
+            details: { token: tokenAddress, recipient: recipientAddress.toLowerCase() },
+            encryptedSenderRandomness: encryptedSender,
+          }, apiBaseUrl),
+          createRequest({
+            ...baseRequest,
+            requestId: `received-${txHash}-${recipientAddress.toLowerCase()}`,
+            userAddress: recipientAddress.toLowerCase(),
+            type: "received",
+            details: { sender: senderAddress.toLowerCase(), recipient: recipientAddress.toLowerCase(), token: tokenAddress },
+            encryptedReceiverRandomness: encryptedReceiver,
+          }, apiBaseUrl),
+        ]);
+
+        console.log("[IBE] Transfer records saved to backend");
       }).catch((err) => {
-        console.warn("[IBE] Failed to encrypt transfer randomness:", err.message);
+        console.warn("[IBE] Failed to encrypt/save transfer randomness:", err.message);
       });
 
       if (waitForFinalization) {
