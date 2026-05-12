@@ -6,12 +6,25 @@ export const CONTRACT_ABI = [
   "function createConfidentialAccount(bytes elgamalPubkey) external",
   "function deposit(address token, uint256 plainAmount) external",
   "function getAccountCore(address ownerAddr) external view returns ((bool exists, bool finalized, bool hasPendingAction, uint256 lastUpdate, bytes pubkey, bytes availableC1, bytes availableC2, uint64 nonce, uint64 lastProcessedNonce))",
+  "function getPendingAction(address ownerAddr) external view returns ((uint8 kind, address owner, uint256 txId, address token, address recipient, uint256 amount, uint256 feePaid, bool useOffchainVerify, bytes data))",
   "function getAvailable(address ownerAddr, address token) external view returns (bytes c1, bytes c2)",
   "function getPending(address ownerAddr, address token) external view returns (bytes c1, bytes c2)",
   "function transferConfidential(address recipient, address token, bytes proof, bool useOffchainVerify) external payable",
   "function withdraw(address token, uint256 plainAmount, bytes proof, bool useOffchainVerify) external",
   "function applyPending() external",
+  "function feeToken() external view returns (address)",
   "function feeAmount() external view returns (uint256)",
+  // Events
+  "event CreateAccountRequested(address indexed ownerAddr, uint256 indexed txId, bytes elgamalPubkey)",
+  "event CreateAccountProcessed(address indexed ownerAddr, uint256 indexed txId, bool ok, string errorMsg, bytes elgamalPubkey)",
+  "event DepositRequested(address indexed ownerAddr, uint256 indexed txId, address indexed token, uint256 plainAmount, bytes availableShare, bytes pendingShare)",
+  "event DepositProcessed(address indexed ownerAddr, uint256 indexed txId, bool ok, string errorMsg, address token, bytes newAvailC1, bytes newAvailC2, uint64 pendingCreditCounter, uint64 minimumPendingCreditCounter, bytes availableShare, bytes pendingShare)",
+  "event TransferRequested(address indexed sender, address indexed recipient, uint256 indexed txId, address token, bytes proof, uint256 feePaid, bool useOffchainVerify, bytes senderPubkey, bytes recipientPubkey, bytes senderCurrC1, bytes senderCurrC2)",
+  "event TransferProcessed(address indexed sender, address indexed recipient, uint256 indexed txId, bool ok, string errorMsg, address token, bytes senderNewAvailC1, bytes senderNewAvailC2, bytes recipientNewPendingC1, bytes recipientNewPendingC2, uint64 senderPendingCreditCounter, bytes senderAvailableShare, uint64 recipientPendingCreditCounter, uint64 recipientMinimumPendingCreditCounter, bytes recipientPendingShare)",
+  "event ApplyPendingRequested(address indexed ownerAddr, uint256 indexed txId)",
+  "event ApplyPendingProcessed(address indexed ownerAddr, uint256 indexed txId, bool ok, string errorMsg, address[] tokens, bytes[] newAvailC1, bytes[] newAvailC2, uint64 pendingCreditCounter, uint64 minimumPendingCreditCounter, bytes availableShare)",
+  "event WithdrawRequested(address indexed ownerAddr, uint256 indexed txId, address token, uint256 plainAmount, bytes proof, bool useOffchainVerify, bytes userPubkey, bytes userCurrC1, bytes userCurrC2)",
+  "event WithdrawProcessed(address indexed ownerAddr, uint256 indexed txId, bool ok, string errorMsg, address token, uint256 plainAmount, bytes newAvailC1, bytes newAvailC2, uint64 pendingCreditCounter, uint64 minimumPendingCreditCounter, bytes availableShare)",
 ];
 
 export const ERC20_ABI = [
@@ -19,6 +32,7 @@ export const ERC20_ABI = [
   "function allowance(address owner, address spender) external view returns (uint256)",
   "function balanceOf(address account) external view returns (uint256)",
   "function decimals() external view returns (uint8)",
+  "function symbol() external view returns (string)",
 ];
 
 export const TEMPO_FEE_TOKEN_ADDRESS =
