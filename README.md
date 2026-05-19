@@ -39,7 +39,7 @@ The following contract addresses are available for confidential transfers on tes
 | Network(Testnet) | Chain ID | Contract Address                             |
 | :--------------- | :------- | :------------------------------------------- |
 | Stable           | 2201     | `0xB96aa42b246a956B170fE426A72fB610E4976f9E` |
-| Arc              | 1244     | `0xb20aB54e1c6AE55B0DD11FEB7FFf3fF1E9631f19` |
+| Arc              | 5042002  | `0xb20aB54e1c6AE55B0DD11FEB7FFf3fF1E9631f19` |
 | Base             | 84532    | `0x962a8A7CD28BfFBb17C4F6Ec388782cca3ffd618` |
 | Ethereum         | 11155111 | `0x2E48F3D9b8F4aCA9E6AF0630eaB2ceB7A3f5eEd1` |
 | Arbitrum         | 421614   | `0x14Afd604971bee5b5fac52df2d56CaE421519Cc5` |
@@ -86,7 +86,10 @@ const stableClient = new ConfidentialTransferClient(
 );
 
 // Arc testnet
-const arcClient = new ConfidentialTransferClient("https://rpc.arc.xyz", 1244);
+const arcClient = new ConfidentialTransferClient(
+  "https://rpc.arc.xyz",
+  5042002,
+);
 
 // Tempo (Stablecoin chain with special fee handling)
 const tempoClient = new ConfidentialTransferClient(

@@ -21,7 +21,7 @@ const CHAINS = [
   },
   {
     network: "Arc",
-    chainId: 1244,
+    chainId: 5042002,
     tokenAddress: "0x3600000000000000000000000000000000000000",
     rpcUrl: "https://rpc.testnet.arc.network",
     explorerUrl: "https://testnet.arcscan.app/tx/",

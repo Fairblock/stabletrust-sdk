@@ -11,7 +11,7 @@ declare module "@fairblock/stabletrust" {
   }
 
   export type StabletrustChainId =
-    | 1244
+    | 5042002
     | 2201
     | 42431
     | 84532

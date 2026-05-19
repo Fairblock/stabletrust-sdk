@@ -57,7 +57,7 @@ export class ConfidentialTransferClient {
       throw new Error("chainId is required");
     }
     if (!resolvedContractAddress) {
-      const supportedChainIds = [2201, 1244, 84532, 11155111, 421614, 42431]
+      const supportedChainIds = [2201, 5042002, 84532, 11155111, 421614, 42431]
         .map(String)
         .join(", ");
       throw new Error(
