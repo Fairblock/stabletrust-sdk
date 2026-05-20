@@ -57,7 +57,7 @@ export class ConfidentialTransferClient {
       throw new Error("chainId is required");
     }
     if (!resolvedContractAddress) {
-      const supportedChainIds = [2201, 1244, 84532, 11155111, 421614, 42431]
+      const supportedChainIds = [2201, 5042002, 84532, 11155111, 421614, 42431]
         .map(String)
         .join(", ");
       throw new Error(
@@ -428,7 +428,6 @@ export class ConfidentialTransferClient {
    * @param {string} tokenAddress - Token address to transfer
    * @param {number} amount - Amount to transfer
    * @param {Object} [options] - Options
-   * @param {boolean} [options.useOffchainVerify=false] - Use offchain verification
    * @param {boolean} [options.waitForFinalization=true] - Wait for transfer finalization
    * @returns {Promise<Object>} Transaction receipt
    */
@@ -439,7 +438,7 @@ export class ConfidentialTransferClient {
     amount,
     options = {},
   ) {
-    const { useOffchainVerify = false, waitForFinalization = true } = options;
+    const { waitForFinalization = true } = options;
 
     try {
       // Validate inputs
@@ -476,7 +475,7 @@ export class ConfidentialTransferClient {
           `Recipient account does not exist. Address: ${recipientAddress}`,
         );
       }
-      let derivedRecipientPublicKey = recipientAccountInfo.pubkey;
+      let derivedRecipientPublicKey = recipientAccountInfo.elgamalPubkey;
       if (!derivedRecipientPublicKey) {
         throw new Error("Recipient public key is required");
       }
@@ -584,7 +583,6 @@ export class ConfidentialTransferClient {
           recipientAddress,
           tokenAddress,
           transferZkpArg,
-          useOffchainVerify,
           txOverrides,
         );
 
@@ -617,12 +615,11 @@ export class ConfidentialTransferClient {
    * @param {string} tokenAddress - Token address to withdraw
    * @param {number} amount - Amount to withdraw
    * @param {Object} [options] - Options
-   * @param {boolean} [options.useOffchainVerify=false] - Use offchain verification
    * @param {boolean} [options.waitForFinalization=true] - Wait for withdrawal finalization
    * @returns {Promise<Object>} Transaction receipt
    */
   async withdraw(wallet, tokenAddress, amount, options = {}) {
-    const { useOffchainVerify = false, waitForFinalization = true } = options;
+    const { waitForFinalization = true } = options;
 
     try {
       // Validate inputs
@@ -741,7 +738,6 @@ export class ConfidentialTransferClient {
           tokenAddress,
           BigInt(withdrawAmount),
           withdrawZkpArg,
-          useOffchainVerify,
         );
 
       const receipt = await tx.wait();
@@ -816,7 +812,7 @@ export class ConfidentialTransferClient {
     while (attempts < maxAttempts) {
       try {
         const info = await this.contract.getAccountCore(address);
-        if (!info.hasPendingAction) {
+        if (!info.pendingAction) {
           return; // Success
         }
       } catch (error) {

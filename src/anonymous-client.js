@@ -862,7 +862,6 @@ export class AnonymousTransferClient {
           { name: "recipient", type: "address" },
           { name: "token", type: "address" },
           { name: "proofHash", type: "bytes32" },
-          { name: "useOffchainVerify", type: "bool" },
           { name: "authNonce", type: "uint256" },
           { name: "deadline", type: "uint256" },
         ],
@@ -872,7 +871,6 @@ export class AnonymousTransferClient {
         recipient,
         token,
         proofHash,
-        useOffchainVerify,
         authNonce,
         deadline: BigInt(deadline),
       };
@@ -996,7 +994,6 @@ export class AnonymousTransferClient {
           { name: "recipientId", type: "uint64" },
           { name: "token", type: "address" },
           { name: "proofHash", type: "bytes32" },
-          { name: "useOffchainVerify", type: "bool" },
           { name: "authNonce", type: "uint256" },
           { name: "deadline", type: "uint256" },
         ],
@@ -1006,7 +1003,6 @@ export class AnonymousTransferClient {
         recipientId: BigInt(recipientId),
         token,
         proofHash,
-        useOffchainVerify,
         authNonce,
         deadline: BigInt(deadline),
       };
@@ -1161,7 +1157,6 @@ export class AnonymousTransferClient {
           { name: "token", type: "address" },
           { name: "plainAmount", type: "uint256" },
           { name: "proofHash", type: "bytes32" },
-          { name: "useOffchainVerify", type: "bool" },
           { name: "authNonce", type: "uint256" },
           { name: "deadline", type: "uint256" },
         ],
@@ -1172,7 +1167,6 @@ export class AnonymousTransferClient {
         token,
         plainAmount: amountBig,
         proofHash,
-        useOffchainVerify,
         authNonce,
         deadline: BigInt(deadline),
       };
