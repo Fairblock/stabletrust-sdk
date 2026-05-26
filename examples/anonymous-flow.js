@@ -28,10 +28,10 @@ const TOKEN_ADDRESS =
   process.env.TOKEN_ADDRESS ?? "0xE915164570b027C2A0FfadcB1B672192E35BF008";
 const TOKEN_DECIMALS = Number(process.env.TOKEN_DECIMALS ?? "6");
 
-// Amounts in raw ERC-20 units
-const DEPOSIT_AMOUNT = 12_000_000n; // 12 USDC (6 decimals)
-const TRANSFER_AMOUNT = 2_000_000n; //  2 USDC
-const WITHDRAW_AMOUNT = 1_500_000n; //  1.5 USDC
+// Amounts in raw ERC-20 units (6 decimals — matches complete-flow.js)
+const DEPOSIT_AMOUNT  =  100_000n; // 0.1  USDC
+const TRANSFER_AMOUNT =   50_000n; // 0.05 USDC
+const WITHDRAW_AMOUNT =   25_000n; // 0.025 USDC
 
 // Anvil test accounts — override via .env
 const ANON1_PK =
@@ -49,14 +49,18 @@ const WITHDRAW_DEST_PK =
 const log = console.log;
 const fmt = (n, decimals) => ethers.formatUnits(BigInt(n), decimals);
 
-async function logBalance(client, accountId, keys, token, decimals, label) {
+async function logBalance(client, accountId, keys, token, _decimals, label) {
   const bal = await client.getBalance(accountId, token, keys.privateKey);
 
+  // getBalance() returns amounts in contract scale (rawAmount * 100 / 10^tokenDecimals).
+  // Formatting with 2 decimal places gives the correct human-readable value: e.g.
+  //   contract scale 10  → formatUnits(10, 2)  = "0.10"  (= 0.1  USDC)
+  //   contract scale 5   → formatUnits(5, 2)   = "0.05"  (= 0.05 USDC)
   console.log(
     `[BALANCE][${label}] acc=${accountId} | ` +
-      `avail=${fmt(bal.available, decimals)} | ` +
-      `pending=${fmt(bal.pending, decimals)} | ` +
-      `total=${fmt(bal.amount, decimals)}`,
+      `avail=${fmt(bal.available, 2)} | ` +
+      `pending=${fmt(bal.pending, 2)} | ` +
+      `total=${fmt(bal.amount, 2)}`,
   );
 
   return bal;
@@ -188,7 +192,7 @@ async function main() {
   // ── [2] Deposit ──────────────────────────────────────────────────────────────
 
   console.log("\n── [2] Deposit into anon1 ──────────────────────────────");
-  log(`Depositing ${fmt(DEPOSIT_AMOUNT, TOKEN_DECIMALS)} USDC into anon1 (anon1 pays gas) …`);
+  log(`Depositing ${fmt(DEPOSIT_AMOUNT, TOKEN_DECIMALS)} tokens into anon1 (anon1 pays gas) …`);
 
   const dep = await client.deposit(
     anon1Wallet,
@@ -219,14 +223,13 @@ async function main() {
   // ── [3] Transfer anon1 → anon2 ───────────────────────────────────────────────
 
   console.log("\n── [3] Transfer anon1 → anon2 ──────────────────────────");
-  log(`Transferring ${fmt(TRANSFER_AMOUNT, TOKEN_DECIMALS)} USDC …`);
+  log(`Transferring ${fmt(TRANSFER_AMOUNT, TOKEN_DECIMALS)} tokens …`);
 
   const txAnon = await client.transferToAnonymous(anon1Wallet, anon1Id, {
     recipientId: anon2Id,
     token: TOKEN_ADDRESS,
     elGamalPrivateKey: anon1Keys.privateKey,
     amount: TRANSFER_AMOUNT,
-    useOffchainVerify: true,
   });
   log("  request_id:", txAnon.request_id, "  status:", txAnon.status);
   if (txAnon.error) log("    [!] Error:", txAnon.error);
@@ -291,14 +294,13 @@ async function main() {
   // ── [5] Withdraw anon2 → public address ──────────────────────────────────────
 
   console.log("\n── [5] Withdraw from anon2 ─────────────────────────────");
-  log(`Withdrawing ${fmt(WITHDRAW_AMOUNT, TOKEN_DECIMALS)} USDC → ${withdrawDest} …`);
+  log(`Withdrawing ${fmt(WITHDRAW_AMOUNT, TOKEN_DECIMALS)} tokens → ${withdrawDest} …`);
 
   const wd = await client.withdraw(anon2Wallet, anon2Id, {
     destination: withdrawDest,
     token: TOKEN_ADDRESS,
     plainAmount: WITHDRAW_AMOUNT,
     elGamalPrivateKey: anon2Keys.privateKey,
-    useOffchainVerify: true,
   });
   log("  request_id:", wd.request_id, "  status:", wd.status);
   if (wd.error) log("    [!] Error:", wd.error);
@@ -325,9 +327,9 @@ async function main() {
   console.log("\n═══════════════════════════════════════════════════════");
   console.log("  ✅ Anonymous flow completed!");
   console.log("═══════════════════════════════════════════════════════");
-  log("Deposited  :", fmt(DEPOSIT_AMOUNT, TOKEN_DECIMALS), "USDC → anon1");
-  log("Transferred:", fmt(TRANSFER_AMOUNT, TOKEN_DECIMALS), "USDC → anon2");
-  log("Withdrawn  :", fmt(WITHDRAW_AMOUNT, TOKEN_DECIMALS), "USDC →", withdrawDest);
+  log("Deposited  :", ethers.formatUnits(DEPOSIT_AMOUNT, TOKEN_DECIMALS), "tokens → anon1");
+  log("Transferred:", ethers.formatUnits(TRANSFER_AMOUNT, TOKEN_DECIMALS), "tokens → anon2");
+  log("Withdrawn  :", ethers.formatUnits(WITHDRAW_AMOUNT, TOKEN_DECIMALS), "tokens →", withdrawDest);
 }
 
 main().catch((err) => {

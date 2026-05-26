@@ -57,6 +57,17 @@ declare module "@fairblock/stabletrust" {
     currentBalanceCiphertext: string;
     currentBalanceContractScale: number;
     withdrawAmountContractScale: number;
+    /**
+     * The *next* contract-level per-account transaction ID ("user tx-id + 1").
+     * Withdraw proofs commit to the txId the account will have **after** the
+     * withdrawal is processed — pass `txId + 1`, not the current `txId`.
+     *
+     * - Confidential accounts: `Number(getAccountInfo(address).txId) + 1`
+     * - Anonymous accounts:    `getAnonymousAccountInfo(accountId).txId + 1n`
+     *
+     * This is NOT the Ethereum account nonce, and NOT the EIP-712 `authNonce`.
+     */
+    nonce: number | bigint;
   }
 
   export interface TransferToPublicParams {
@@ -70,7 +81,6 @@ declare module "@fairblock/stabletrust" {
     amount?: bigint | string | number;
     /** Recipient ElGamal public key (base64). Auto-resolved from the chain if omitted. */
     destinationPublicKey?: string;
-    useOffchainVerify?: boolean;
   }
 
   export interface TransferToAnonymousParams {
@@ -84,7 +94,6 @@ declare module "@fairblock/stabletrust" {
     amount?: bigint | string | number;
     /** Recipient ElGamal public key (base64). Auto-resolved from the chain if omitted. */
     destinationPublicKey?: string;
-    useOffchainVerify?: boolean;
   }
 
   export interface WithdrawParams {
@@ -96,7 +105,6 @@ declare module "@fairblock/stabletrust" {
     proof?: string;
     /** ElGamal private key (base64) for auto-proof generation. Contract scale is derived automatically. */
     elGamalPrivateKey?: string;
-    useOffchainVerify?: boolean;
   }
 
   export interface AnonymousAccountBalance {

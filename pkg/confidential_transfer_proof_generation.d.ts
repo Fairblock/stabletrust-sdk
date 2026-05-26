@@ -1,27 +1,29 @@
 /* tslint:disable */
 /* eslint-disable */
-export function generate_withdraw_proof(input: string): string;
-export function decrypt_ciphertext(ciphertext_base64: string, keypair_base64: string): string;
 /**
  * Generate a deterministic ElGamal keypair from an EIP-712 signature
  */
 export function generate_deterministic_keypair(signature_hex: string, domain_context: string): string;
-export function test_wasm(): string;
-export function generate_transfer_proof(input: string): string;
 /**
- * Decode transfer proof from contract input data and extract transfer amount ciphertext
- * handle_index: 0 for sender, 1 for recipient
+ * Generate a deterministic ElGamal keypair using legacy method (for backward compatibility)
  */
-export function decode_transfer_proof(validity_proof_base64: string, handle_index: number): string;
+export function generate_deterministic_keypair_legacy(signature_hex: string): string;
 /**
  * Generate a random ElGamal keypair (for compatibility)
  */
 export function generate_keypair(): string;
 export function encrypt_amount(amount: bigint, pubkey_base64: string): string;
+export function decrypt_ciphertext(ciphertext_base64: string, keypair_base64: string): string;
+export function encrypt_amount_with_randomness(amount: bigint, pubkey_base64: string): string;
+export function decrypt_ciphertext_with_randomness(ciphertext_base64: string, randomness_base64: string): string;
+export function generate_transfer_proof(input: string): string;
+export function generate_withdraw_proof(input: string): string;
 /**
- * Generate a deterministic ElGamal keypair using legacy method (for backward compatibility)
+ * Decode transfer proof from contract input data and extract transfer amount ciphertext
+ * handle_index: 0 for sender, 1 for recipient
  */
-export function generate_deterministic_keypair_legacy(signature_hex: string): string;
+export function decode_transfer_proof(validity_proof_base64: string, handle_index: number): string;
+export function test_wasm(): string;
 
 export type InitInput = RequestInfo | URL | Response | BufferSource | WebAssembly.Module;
 
@@ -29,7 +31,9 @@ export interface InitOutput {
   readonly memory: WebAssembly.Memory;
   readonly decode_transfer_proof: (a: number, b: number, c: number, d: number) => void;
   readonly decrypt_ciphertext: (a: number, b: number, c: number, d: number, e: number) => void;
+  readonly decrypt_ciphertext_with_randomness: (a: number, b: number, c: number, d: number, e: number) => void;
   readonly encrypt_amount: (a: number, b: bigint, c: number, d: number) => void;
+  readonly encrypt_amount_with_randomness: (a: number, b: bigint, c: number, d: number) => void;
   readonly generate_deterministic_keypair: (a: number, b: number, c: number, d: number, e: number) => void;
   readonly generate_deterministic_keypair_legacy: (a: number, b: number, c: number) => void;
   readonly generate_keypair: (a: number) => void;

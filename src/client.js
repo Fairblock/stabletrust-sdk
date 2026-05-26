@@ -689,12 +689,19 @@ export class ConfidentialTransferClient {
       const currentBalanceContractScale =
         (BigInt(currentBalance) * 100n) / 10n ** BigInt(tokenDecimals);
 
+      // Fetch the contract's per-account txId. Withdraw proofs bind to the *next*
+      // tx id (txId + 1), not the current one — the contract increments the counter
+      // on every action, and the proof must commit to what it will be after submission.
+      const accountInfo = await this.getAccountInfo(address);
+      const txId = BigInt(accountInfo.txId ?? 0n);
+
       // Generate withdrawal proof
       const withdrawInput = {
         current_balance_ciphertext: currentBalanceCiphertext,
         current_balance: Number(currentBalanceContractScale),
         withdraw_amount: Number(withdrawAmount),
         keypair: derivedKeys.privateKey,
+        nonce: Number(txId + 1n),
       };
 
       const wasm = await this._getWasm();

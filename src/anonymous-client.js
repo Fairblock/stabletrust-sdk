@@ -135,6 +135,43 @@ export class AnonymousTransferClient {
     );
   }
 
+  // ─────────────── token decimal / scale helpers ─────────────────
+
+  /**
+   * Fetch and cache token decimals.
+   * @private
+   */
+  async _fetchTokenDecimals(tokenAddress) {
+    if (!this._tokenDecimals) this._tokenDecimals = {};
+    const key = tokenAddress.toLowerCase();
+    if (this._tokenDecimals[key] !== undefined) return this._tokenDecimals[key];
+    const contract = new ethers.Contract(
+      tokenAddress,
+      ["function decimals() view returns (uint8)"],
+      this.provider,
+    );
+    const decimals = Number(await contract.decimals());
+    this._tokenDecimals[key] = decimals;
+    return decimals;
+  }
+
+  /**
+   * Convert a raw ERC-20 token amount to contract scale.
+   *
+   * The anonymous contract stores balances and takes deposit/withdraw amounts in
+   * **contract scale**: `rawAmount * 100 / 10^decimals`.  For a 6-decimal token
+   * (USDC) that means 0.1 USDC = 100_000 raw → 10 contract scale.
+   *
+   * @param {string} tokenAddress
+   * @param {bigint} rawAmount - Amount in raw ERC-20 units (wei-scaled by token decimals)
+   * @returns {Promise<bigint>} Amount in contract scale
+   * @private
+   */
+  async _toContractScale(tokenAddress, rawAmount) {
+    const decimals = await this._fetchTokenDecimals(tokenAddress);
+    return (rawAmount * 100n) / 10n ** BigInt(decimals);
+  }
+
   // ─────────────────────── on-chain reads ────────────────────────
 
   /**
@@ -434,9 +471,10 @@ export class AnonymousTransferClient {
    *
    * @param {string} elGamalPrivateKey - ElGamal private key (base64)
    * @param {Object} params
-   * @param {string} params.currentBalanceCiphertext    - Combined ciphertext (base64, 64 bytes)
-   * @param {number} params.currentBalanceContractScale - Balance in contract scale
-   * @param {number} params.withdrawAmountContractScale - Withdraw amount in the same scale
+   * @param {string}         params.currentBalanceCiphertext    - Combined ciphertext (base64, 64 bytes)
+   * @param {number}         params.currentBalanceContractScale - Balance in contract scale
+   * @param {number}         params.withdrawAmountContractScale - Withdraw amount in the same scale
+   * @param {number|bigint}  params.nonce  - Next user tx-id: pass `accountInfo.txId + 1n` (NOT the current txId)
    * @returns {Promise<string>} ABI-encoded proof as "0x..." hex
    */
   async generateWithdrawProof(
@@ -445,14 +483,19 @@ export class AnonymousTransferClient {
       currentBalanceCiphertext,
       currentBalanceContractScale,
       withdrawAmountContractScale,
+      nonce,
     },
   ) {
+    if (nonce === undefined || nonce === null)
+      throw new Error("nonce is required for withdraw proof generation");
+
     const wasm = await this._getWasm();
     const input = {
       current_balance_ciphertext: currentBalanceCiphertext,
       current_balance: currentBalanceContractScale,
       withdraw_amount: withdrawAmountContractScale,
       keypair: elGamalPrivateKey,
+      nonce: Number(nonce),
     };
     const result = JSON.parse(
       wasm.generate_withdraw_proof(JSON.stringify(input)),
@@ -680,6 +723,20 @@ export class AnonymousTransferClient {
           throw new Error("Token approval failed");
       }
 
+      // Convert raw ERC-20 units → contract scale.
+      // The contract stores and accepts amounts as `rawAmount * 100 / 10^decimals`
+      // and internally calls `safeTransferFrom(user, contract, plainAmount * tokenMul)`
+      // where `tokenMul = 10^decimals / 100`.  Passing raw units here would cause the
+      // contract to attempt a 10_000× larger transfer on a 6-decimal token, reverting.
+      const plainAmountContractScale = await this._toContractScale(
+        tokenAddress,
+        amountBig,
+      );
+      if (plainAmountContractScale <= 0n)
+        throw new Error(
+          `Amount too small: ${amountBig} raw units rounds to 0 in contract scale`,
+        );
+
       // 2. EIP-712 deposit auth signature
       const authNonce = await this.getAuthNonce(accountId);
       const deadline = this._makeDeadline(deadlineOffset);
@@ -697,7 +754,7 @@ export class AnonymousTransferClient {
       const value = {
         accountId: BigInt(accountId),
         token: tokenAddress,
-        plainAmount: amountBig,
+        plainAmount: plainAmountContractScale,
         authNonce,
         deadline: BigInt(deadline),
       };
@@ -710,7 +767,7 @@ export class AnonymousTransferClient {
         [
           BigInt(accountId),
           tokenAddress,
-          amountBig,
+          plainAmountContractScale,
           authNonce,
           BigInt(deadline),
           authSig,
@@ -778,7 +835,6 @@ export class AnonymousTransferClient {
    * @param {string}  [params.elGamalPrivateKey]  - ElGamal private key (base64) for auto-proof
    * @param {bigint|string|number} [params.amount] - Transfer amount in token units for auto-proof
    * @param {string}  [params.destinationPublicKey] - Recipient ElGamal pubkey (base64) for auto-proof
-   * @param {boolean} [params.useOffchainVerify=true]
    * @param {Object}  [options]
    * @param {number}  [options.deadlineOffset=3600]
    * @returns {Promise<{request_id:string, tx_hash:string, status:string}>}
@@ -793,7 +849,6 @@ export class AnonymousTransferClient {
       elGamalPrivateKey,
       amount,
       destinationPublicKey,
-      useOffchainVerify = true,
     },
     options = {},
   ) {
@@ -813,7 +868,10 @@ export class AnonymousTransferClient {
         if (amount === undefined || amount === null)
           throw new Error("amount is required when auto-generating proof");
 
-        const transferAmountContractScale = Number(BigInt(amount));
+        // Convert raw ERC-20 units → contract scale for proof generation
+        const transferAmountContractScale = Number(
+          await this._toContractScale(token, BigInt(amount)),
+        );
 
         // Auto-resolve destinationPublicKey from the recipient's on-chain confidential account
         let destPubkey = destinationPublicKey;
@@ -882,7 +940,6 @@ export class AnonymousTransferClient {
         recipient,
         token,
         proof: proofHex,
-        use_offchain_verify: useOffchainVerify,
         auth_nonce: String(authNonce),
         deadline: String(deadline),
         signature,
@@ -912,7 +969,6 @@ export class AnonymousTransferClient {
    * @param {string}        [params.elGamalPrivateKey]     - ElGamal private key (base64) for auto-proof
    * @param {bigint|string|number} [params.amount]         - Transfer amount in token units for auto-proof
    * @param {string}        [params.destinationPublicKey]  - Recipient ElGamal pubkey (base64) for auto-proof
-   * @param {boolean}       [params.useOffchainVerify=true]
    * @param {Object}  [options]
    * @param {number}  [options.deadlineOffset=3600]
    * @returns {Promise<{request_id:string, tx_hash:string, status:string}>}
@@ -927,7 +983,6 @@ export class AnonymousTransferClient {
       elGamalPrivateKey,
       amount,
       destinationPublicKey,
-      useOffchainVerify = true,
     },
     options = {},
   ) {
@@ -945,7 +1000,10 @@ export class AnonymousTransferClient {
         if (amount === undefined || amount === null)
           throw new Error("amount is required when auto-generating proof");
 
-        const transferAmountContractScale = Number(BigInt(amount));
+        // Convert raw ERC-20 units → contract scale for proof generation
+        const transferAmountContractScale = Number(
+          await this._toContractScale(token, BigInt(amount)),
+        );
 
         // Auto-resolve destinationPublicKey from the recipient's anonymous account on-chain
         let destPubkey = destinationPublicKey;
@@ -1014,7 +1072,6 @@ export class AnonymousTransferClient {
         recipient_id: Number(recipientId),
         token,
         proof: proofHex,
-        use_offchain_verify: useOffchainVerify,
         auth_nonce: String(authNonce),
         deadline: String(deadline),
         signature,
@@ -1090,7 +1147,6 @@ export class AnonymousTransferClient {
    * @param {bigint|string|number} params.plainAmount    - Withdrawal amount in token units
    * @param {string}             [params.proof]          - Pre-computed ZK proof ("0x..." hex)
    * @param {string}             [params.elGamalPrivateKey] - ElGamal private key (base64) for auto-proof
-   * @param {boolean}            [params.useOffchainVerify=true]
    * @param {Object}  [options]
    * @param {number}  [options.deadlineOffset=3600]
    * @returns {Promise<{request_id:string, tx_hash:string, status:string}>}
@@ -1104,7 +1160,6 @@ export class AnonymousTransferClient {
       plainAmount,
       proof,
       elGamalPrivateKey,
-      useOffchainVerify = true,
     },
     options = {},
   ) {
@@ -1117,14 +1172,33 @@ export class AnonymousTransferClient {
 
       const amountBig = BigInt(plainAmount);
 
+      // Convert raw ERC-20 units → contract scale.
+      // The contract's withdrawAnonymous expects plainAmount in contract scale
+      // and internally calls `safeTransfer(destination, plainAmount * tokenMul)`.
+      const withdrawAmountContractScale = await this._toContractScale(
+        token,
+        amountBig,
+      );
+      if (withdrawAmountContractScale <= 0n)
+        throw new Error(
+          `Amount too small: ${amountBig} raw units rounds to 0 in contract scale`,
+        );
+
+      // Single call — gives us both txId (proof nonce) and authNonce (EIP-712 sig).
+      // txId is the contract's per-account transaction counter ("user tx-id").
+      // Withdraw proofs bind to the *next* tx id (txId + 1) — the contract increments
+      // on every action, and the proof must commit to what the counter will be after
+      // submission. authNonce is the separate EIP-712 replay-protection nonce.
+      const accountInfo = await this.getAnonymousAccountInfo(accountId);
+      const authNonce = accountInfo.authNonce;
+      const txId = accountInfo.txId;
+
       let proofHex;
       if (proof) {
         proofHex = proof.startsWith("0x") ? proof : `0x${proof}`;
       } else {
         if (!elGamalPrivateKey)
           throw new Error("Either proof or elGamalPrivateKey must be provided");
-
-        const withdrawAmountContractScale = Number(amountBig);
 
         const { ciphertext, amount: currentBalance } =
           await this._decryptAnonymousBalance(
@@ -1141,11 +1215,10 @@ export class AnonymousTransferClient {
         proofHex = await this.generateWithdrawProof(elGamalPrivateKey, {
           currentBalanceCiphertext: ciphertext,
           currentBalanceContractScale: currentBalance,
-          withdrawAmountContractScale,
+          withdrawAmountContractScale: Number(withdrawAmountContractScale),
+          nonce: txId + 1n,  // proof binds to *next* txId (current + 1)
         });
       }
-
-      const authNonce = await this.getAuthNonce(accountId);
       const deadline = this._makeDeadline(deadlineOffset);
       const proofHash = ethers.keccak256(proofHex);
 
@@ -1165,7 +1238,7 @@ export class AnonymousTransferClient {
         accountId: BigInt(accountId),
         destination,
         token,
-        plainAmount: amountBig,
+        plainAmount: withdrawAmountContractScale,
         proofHash,
         authNonce,
         deadline: BigInt(deadline),
@@ -1177,9 +1250,8 @@ export class AnonymousTransferClient {
         account_id: Number(accountId),
         destination,
         token,
-        plain_amount: String(amountBig),
+        plain_amount: String(withdrawAmountContractScale),
         proof: proofHex,
-        use_offchain_verify: useOffchainVerify,
         auth_nonce: String(authNonce),
         deadline: String(deadline),
         signature,
