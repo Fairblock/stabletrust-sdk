@@ -428,7 +428,6 @@ export class ConfidentialTransferClient {
    * @param {string} tokenAddress - Token address to transfer
    * @param {number} amount - Amount to transfer
    * @param {Object} [options] - Options
-   * @param {boolean} [options.useOffchainVerify=false] - Use offchain verification
    * @param {boolean} [options.waitForFinalization=true] - Wait for transfer finalization
    * @returns {Promise<Object>} Transaction receipt
    */
@@ -439,7 +438,7 @@ export class ConfidentialTransferClient {
     amount,
     options = {},
   ) {
-    const { useOffchainVerify = false, waitForFinalization = true } = options;
+    const { waitForFinalization = true } = options;
 
     try {
       // Validate inputs
@@ -476,7 +475,7 @@ export class ConfidentialTransferClient {
           `Recipient account does not exist. Address: ${recipientAddress}`,
         );
       }
-      let derivedRecipientPublicKey = recipientAccountInfo.pubkey;
+      let derivedRecipientPublicKey = recipientAccountInfo.elgamalPubkey;
       if (!derivedRecipientPublicKey) {
         throw new Error("Recipient public key is required");
       }
@@ -584,7 +583,6 @@ export class ConfidentialTransferClient {
           recipientAddress,
           tokenAddress,
           transferZkpArg,
-          useOffchainVerify,
           txOverrides,
         );
 
@@ -617,12 +615,11 @@ export class ConfidentialTransferClient {
    * @param {string} tokenAddress - Token address to withdraw
    * @param {number} amount - Amount to withdraw
    * @param {Object} [options] - Options
-   * @param {boolean} [options.useOffchainVerify=false] - Use offchain verification
    * @param {boolean} [options.waitForFinalization=true] - Wait for withdrawal finalization
    * @returns {Promise<Object>} Transaction receipt
    */
   async withdraw(wallet, tokenAddress, amount, options = {}) {
-    const { useOffchainVerify = false, waitForFinalization = true } = options;
+    const { waitForFinalization = true } = options;
 
     try {
       // Validate inputs
@@ -692,12 +689,19 @@ export class ConfidentialTransferClient {
       const currentBalanceContractScale =
         (BigInt(currentBalance) * 100n) / 10n ** BigInt(tokenDecimals);
 
+      // Fetch the contract's per-account txId. Withdraw proofs bind to the *next*
+      // tx id (txId + 1), not the current one — the contract increments the counter
+      // on every action, and the proof must commit to what it will be after submission.
+      const accountInfo = await this.getAccountInfo(address);
+      const txId = BigInt(accountInfo.txId ?? 0n);
+
       // Generate withdrawal proof
       const withdrawInput = {
         current_balance_ciphertext: currentBalanceCiphertext,
         current_balance: Number(currentBalanceContractScale),
         withdraw_amount: Number(withdrawAmount),
         keypair: derivedKeys.privateKey,
+        nonce: Number(txId + 1n),
       };
 
       const wasm = await this._getWasm();
@@ -741,7 +745,6 @@ export class ConfidentialTransferClient {
           tokenAddress,
           BigInt(withdrawAmount),
           withdrawZkpArg,
-          useOffchainVerify,
         );
 
       const receipt = await tx.wait();
@@ -816,7 +819,7 @@ export class ConfidentialTransferClient {
     while (attempts < maxAttempts) {
       try {
         const info = await this.contract.getAccountCore(address);
-        if (!info.hasPendingAction) {
+        if (!info.pendingAction) {
           return; // Success
         }
       } catch (error) {

@@ -3,7 +3,9 @@
 export const memory: WebAssembly.Memory;
 export const decode_transfer_proof: (a: number, b: number, c: number, d: number) => void;
 export const decrypt_ciphertext: (a: number, b: number, c: number, d: number, e: number) => void;
+export const decrypt_ciphertext_with_randomness: (a: number, b: number, c: number, d: number, e: number) => void;
 export const encrypt_amount: (a: number, b: bigint, c: number, d: number) => void;
+export const encrypt_amount_with_randomness: (a: number, b: bigint, c: number, d: number) => void;
 export const generate_deterministic_keypair: (a: number, b: number, c: number, d: number, e: number) => void;
 export const generate_deterministic_keypair_legacy: (a: number, b: number, c: number) => void;
 export const generate_keypair: (a: number) => void;

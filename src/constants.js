@@ -5,11 +5,11 @@
 export const CONTRACT_ABI = [
   "function createConfidentialAccount(bytes elgamalPubkey) external",
   "function deposit(address token, uint256 plainAmount) external",
-  "function getAccountCore(address ownerAddr) external view returns ((bool exists, bool finalized, bool hasPendingAction, uint256 lastUpdate, bytes pubkey, bytes availableC1, bytes availableC2, uint64 nonce, uint64 lastProcessedNonce))",
+  "function getAccountCore(address ownerAddr) external view returns ((bool exists, bool finalized, bool pendingAction, uint256 txId, bytes elgamalPubkey, uint64 pendingCreditCounter))",
   "function getAvailable(address ownerAddr, address token) external view returns (bytes c1, bytes c2)",
   "function getPending(address ownerAddr, address token) external view returns (bytes c1, bytes c2)",
-  "function transferConfidential(address recipient, address token, bytes proof, bool useOffchainVerify) external payable",
-  "function withdraw(address token, uint256 plainAmount, bytes proof, bool useOffchainVerify) external",
+  "function transferConfidential(address recipient, address token, bytes proof) external payable",
+  "function withdraw(address token, uint256 plainAmount, bytes proof) external",
   "function applyPending() external",
   "function feeAmount() external view returns (uint256)",
 ];
@@ -23,13 +23,12 @@ export const ERC20_ABI = [
 
 export const TEMPO_FEE_TOKEN_ADDRESS =
   "0x20c0000000000000000000000000000000000000";
-
 export const STABLETRUST_CONTRACTS_BY_CHAIN_ID = Object.freeze({
-  2201: "0xdf43bC80B5b22A858860947d383b6F4d6C81d8EC", //Stable
-  5042002: "0x5d43CE5269Cd46badC67B3664369862F20eC5649", //Arc
-  84532: "0xFBEa2AbCf1208E09dd90266fE94Fb76d8BfC34d9", //Base
-  11155111: "0x72B87207791996F416D2F3B0dcAcbb07F445C496", //Ethereum
-  421614: "0x6C9eDBDd028Fe610b054187A34712714E341D112", //Arbitrum
+  2201: "0xA98e5ba75Bb44459916D52Abf1604caB3d98CC4B", //Stable
+  5042002: "0xdCF31bd9f325C34E0fb346b1975E141D99AEf731", //Arc
+  84532: "0xF66A0a1670F14AE5D1852B4E7d1e4C693b2Accfd", //Base
+  11155111: "0xa066b5C30382110d19925108BBa1Eef613a3A041", //Ethereum
+  421614: "0xbda65d65A7833D28F9391FF01d0b212B75538Cf2", //Arbitrum
   42431: "0xE559fB936C69c46E216bf61B07C16bF1a6d444aa", //Tempo
 });
 
