@@ -2,7 +2,7 @@
 
 ## Overview
 
-The StableTrust SDK by Fairblock provides a robust interface for executing confidential transfers using homomorphic encryption and zero-knowledge proofs. This package enables developers to integrate confidentiality features directly into their applications, allowing for secure token deposits, private transfers, and withdrawals while maintaining the integrity and auditability of the underlying blockchain transactions.
+The StableTrust SDK by Fairblock provides a robust interface for executing confidential and anonymous transfers using homomorphic encryption and zero-knowledge proofs. This package enables developers to integrate confidentiality features directly into their applications, allowing for secure token deposits, private transfers, and withdrawals while maintaining the integrity and auditability of the underlying blockchain transactions.
 
 For a comprehensive technical understanding of the architecture and cryptographic primitives, please refer to the following documentation:
 
@@ -32,6 +32,31 @@ Or with yarn:
 yarn add @fairblock/stabletrust
 ```
 
+---
+
+## Two Clients: Which One to Use?
+
+The SDK ships two clients that serve different privacy models:
+
+| Feature | `ConfidentialTransferClient` | `AnonymousTransferClient` |
+| :--- | :--- | :--- |
+| **Identity** | On-chain wallet address is visible | Account ID only — wallet address is hidden |
+| **Gas** | User pays gas for all transactions | Fairycloak relay pays gas (except deposit) |
+| **Setup** | Direct RPC connection | Requires a running Fairycloak relay server |
+| **Recipient** | Must have a confidential account | Can receive to another anonymous account or a public address |
+| **Key management** | Keys auto-derived from wallet signature | Keys derived per-account; store the private key yourself |
+| **Best for** | Privacy over balances/amounts with known senders | Full sender anonymity |
+
+### `ConfidentialTransferClient` — Confidential Transfers
+
+Transactions are submitted on-chain directly from your wallet. The **amount and balance are encrypted** (hidden), but the **sender's address is visible** on-chain. Ideal when you want confidential balances without hiding your identity.
+
+### `AnonymousTransferClient` — Anonymous Transfers
+
+Transactions are routed through the **Fairycloak relay**, which submits them on-chain and pays gas. The sender's wallet address is **never revealed** on-chain — only a numeric account ID is associated with the transfer. Use this client when full sender anonymity is required.
+
+---
+
 ## Available Confidential Contract Addresses (Testnet)
 
 The following contract addresses are available for confidential transfers on testnet networks. These are test deployments and should not be used with mainnet assets:
@@ -45,9 +70,11 @@ The following contract addresses are available for confidential transfers on tes
 | Arbitrum         | 421614   | `0x14Afd604971bee5b5fac52df2d56CaE421519Cc5` |
 | Tempo            | 42431    | `0x08B6563C95dfe3a4F5533CAA6F7D55a74FCb4F6c` |
 
-## Usage
+---
 
-The SDK revolves around the `ConfidentialTransferClient`, which manages interactions with the confidential transfer contract and handles the necessary cryptographic operations.
+## ConfidentialTransferClient
+
+The `ConfidentialTransferClient` manages direct on-chain interactions with the confidential transfer contract. Amounts and balances are encrypted using homomorphic encryption; the sender's wallet address remains visible on-chain.
 
 ### Initialization
 
@@ -57,14 +84,14 @@ Import and initialize the client with your network configuration.
 import { ConfidentialTransferClient } from "@fairblock/stabletrust";
 import { ethers } from "ethers";
 
-// Configuration for Base Sepolia (uses SDK default StableTrust contract for chainId 84532)
+// Use SDK default StableTrust contract for a known chainId
 const client = new ConfidentialTransferClient(
   "https://sepolia.base.org",
   84532,
 );
 ```
 
-If you are using a custom deployment, you can still pass an explicit contract address:
+If you are using a custom deployment, pass an explicit contract address:
 
 ```javascript
 const customClient = new ConfidentialTransferClient(
@@ -76,8 +103,6 @@ const customClient = new ConfidentialTransferClient(
 
 #### Network Configuration Examples
 
-For testnet networks listed above, use the following configurations:
-
 ```javascript
 // Stable testnet
 const stableClient = new ConfidentialTransferClient(
@@ -85,149 +110,331 @@ const stableClient = new ConfidentialTransferClient(
   2201,
 );
 
-// Arc testnet
-const arcClient = new ConfidentialTransferClient("https://rpc.arc.xyz", 1244);
-
-// Tempo (Stablecoin chain with special fee handling)
+// Tempo (special fee handling via IPFS proof upload)
 const tempoClient = new ConfidentialTransferClient(
   "https://tempo-rpc.example.com",
   42431,
 );
 ```
 
-**Note on Tempo Chain**: The Tempo network (chainId 42431) uses token-based fees instead of native currency. The SDK automatically handles fee payment using PathUSD when detected.
+**Note on Tempo Chain**: The Tempo network (chainId 42431) uploads ZK proofs to IPFS instead of passing them as calldata. The SDK handles this automatically.
 
 ### Token Denomination
 
-When interacting with the SDK for deposit, transfer, and withdraw operations, you should parse the token amount using the underlying token's decimals. When displaying the fetched balance, format it using the token's decimals.
-
-- To deposit, transfer, or withdraw tokens, parse the amount using `ethers.parseUnits(amount, tokenDecimals)`.
-- To display a balance, format the raw amount using `ethers.formatUnits(balance.amount, tokenDecimals)`.
-
-**Recommended helpers (consistent with examples):**
+When depositing, transferring, or withdrawing, parse the token amount using the token's decimals. When displaying a fetched balance, format it back using those same decimals.
 
 ```javascript
-// Fetch or define your token's decimals (e.g., 6 for USDC)
-const tokenDecimals = 6;
+const tokenDecimals = 6; // e.g., USDC
 
 const amountToDeposit = ethers.parseUnits("0.1", tokenDecimals);
 await client.confidentialDeposit(signer, tokenAddress, amountToDeposit);
 
 const amountToTransfer = ethers.parseUnits("0.05", tokenDecimals);
-await client.confidentialTransfer(
-  signer,
-  recipientAddress,
-  tokenAddress,
-  amountToTransfer,
-);
+await client.confidentialTransfer(signer, recipientAddress, tokenAddress, amountToTransfer);
 
 const amountToWithdraw = ethers.parseUnits("0.02", tokenDecimals);
 await client.withdraw(signer, tokenAddress, amountToWithdraw);
 
-const balance = await client.getConfidentialBalance(
-  signer.address,
-  privateKey,
-  tokenAddress,
-);
+const balance = await client.getConfidentialBalance(signer.address, privateKey, tokenAddress);
 console.log("Balance:", ethers.formatUnits(balance.amount, tokenDecimals));
 ```
 
-### Key Functions
+### Key Methods
 
-The following methods are the primary entry points for interacting with the confidential system.
+#### `ensureAccount(wallet, options?)`
+
+Creates a confidential account on-chain (if one doesn't exist) and waits for finalization. **Must be called before any confidential operation.**
+
+- **Returns**: `{ publicKey, privateKey }` — derived ElGamal keypair for this wallet.
+- `options.waitForFinalization` (default `true`) — wait for the account to be finalized.
+- `options.maxAttempts` (default `225`) — maximum polling attempts.
+
+```javascript
+const keys = await client.ensureAccount(wallet);
+```
 
 #### `getAccountInfo(address)`
 
-Fetches account core information from the contract.
-
-- **Parameters**:
-  - `address` (string): The account address.
-- **Returns**: Contract account data (exists, finalized, pubkey, etc.).
-
-#### `ensureAccount(signer, options)`
-
-Initializes or retrieves the cryptographic keys associated with an account. This step is required before performing any confidential operations. Automatically creates the account on-chain if it doesn't exist.
-
-- **Parameters**:
-  - `signer` (ethers.Signer): The ethers.js signer instance for the user.
-  - `options` (object, optional):
-    - `waitForFinalization` (boolean): Wait for account finalization. Default: `true`
-    - `maxAttempts` (number): Maximum attempts to check finalization. Default: `30`
-- **Returns**: An object containing the user's private and public keys for the confidential system.
+Fetches on-chain account state: `exists`, `finalized`, `elgamalPubkey`, `txId`, etc.
 
 #### `getConfidentialBalance(address, privateKey, tokenAddress)`
 
-Retrieves the decrypted available and pending balances for a specific token, plus the total.
+Decrypts and returns the available and pending balances.
 
-- **Parameters**:
-  - `address` (string): The account address.
-  - `privateKey` (string): The private key for decryption.
-  - `tokenAddress` (string): The token contract address.
-- **Returns**: An object containing:
-  - `amount` (bigint): The total (available + pending)
-  - `available` (object): `{ amount, ciphertext }`
-  - `pending` (object): `{ amount, ciphertext }`
+- **Returns**: `{ amount, available: { amount, ciphertext }, pending: { amount, ciphertext } }`
 
-#### `confidentialDeposit(signer, tokenAddress, amount, options)`
+#### `confidentialDeposit(wallet, tokenAddress, amount, options?)`
 
-Deposits a specified amount of ERC20 tokens into the confidential contract, converting them into a "pending" confidential balance.
+Deposits ERC-20 tokens into the confidential contract. Handles ERC-20 approval automatically.
 
-- **Parameters**:
-  - `signer` (ethers.Signer): The transaction signer.
-  - `tokenAddress` (string): The contract address of the ERC20 token.
-  - `amount` (bigint | string | number): The amount to deposit, parsed with token decimals.
-  - `options` (object, optional):
-    - `waitForFinalization` (boolean): Wait for deposit finalization. Default: `true`
-- **Returns**: A transaction receipt.
+- **Returns**: Transaction receipt.
 
-#### `confidentialTransfer(signer, recipientAddress, tokenAddress, amount, options)`
+#### `confidentialTransfer(senderWallet, recipientAddress, tokenAddress, amount, options?)`
 
-Executes a confidential transfer of tokens from the sender to a recipient. The amount and nature of the transfer are encrypted.
+Transfers a confidential amount to a recipient. The recipient must have an existing confidential account.
 
-- **Parameters**:
-  - `signer` (ethers.Signer): The sender's signer.
-  - `recipientAddress` (string): The public address of the recipient.
-  - `tokenAddress` (string): The token contract address.
-  - `amount` (bigint | string | number): The amount to transfer, parsed with token decimals.
-  - `options` (object, optional):
-    - `useOffchainVerify` (boolean): Use offchain verification. Default: `false`
-    - `waitForFinalization` (boolean): Wait for transfer finalization. Default: `true`
-- **Returns**: A transaction receipt.
+- **Returns**: Transaction receipt.
 
-#### `withdraw(signer, tokenAddress, amount, options)`
+#### `withdraw(wallet, tokenAddress, amount, options?)`
 
-Withdraws funds from the confidential "available" balance back to the public layer (ERC20 tokens).
+Withdraws from the confidential available balance back to public ERC-20.
 
-- **Parameters**:
-  - `signer` (ethers.Signer): The user's signer.
-  - `tokenAddress` (string): The token contract address.
-  - `amount` (bigint | string | number): The amount to withdraw, parsed with token decimals.
-  - `options` (object, optional):
-    - `useOffchainVerify` (boolean): Use offchain verification. Default: `false`
-    - `waitForFinalization` (boolean): Wait for withdrawal finalization. Default: `true`
-- **Returns**: A transaction receipt.
+- **Returns**: Transaction receipt.
 
-### Examples
+#### `getFeeAmount()`
 
-For a complete implementation demonstrating the full lifecycle of a confidential transaction—from deposit to withdrawal—please refer to the `examples/complete-flow.js` file included in this repository.
+Returns the native fee (in wei) required for confidential transfers on the current chain.
 
-Additional examples are available in the `examples/` directory:
+#### `getPublicBalance(address, tokenAddress)`
 
-- **complete-flow.js**: Full workflow example covering all operations
-- **simple-snippets.js**: Quick code snippets for common tasks
+Returns the public ERC-20 balance for an address.
+
+---
+
+## AnonymousTransferClient
+
+The `AnonymousTransferClient` routes all operations through the **Fairycloak relay server**. The relay submits transactions on-chain and pays gas on your behalf (except for deposits, which require the user to pay). Your wallet address is never revealed — only a numeric anonymous account ID appears on-chain.
+
+> **Access Required** — Anonymous transfers are available to teams building privacy-critical applications. To obtain a Fairycloak relay URL and API key, reach out to the Fairblock team at [hello@fairblock.network](mailto:hello@fairblock.network).
+
+### Initialization
+
+```javascript
+import { AnonymousTransferClient } from "@fairblock/stabletrust";
+
+const client = new AnonymousTransferClient({
+  fairycloakUrl: "http://127.0.0.1:8080", // Fairycloak relay base URL
+  diamondAddress: "0xYourDiamondContractAddress",
+  chainId: 84532,
+  rpcUrl: "https://sepolia.base.org",
+  apiKey: "optional-api-key",             // optional
+});
+```
+
+### Key Derivation
+
+Anonymous accounts use a per-account ElGamal keypair derived from a wallet signature. **Store the returned `privateKey` securely** — it cannot be recovered without the original wallet and account ID.
+
+```javascript
+const keys = await client.deriveAnonymousKeys(authWallet, accountId);
+// keys.publicKey — base64, register this when creating an account
+// keys.privateKey — base64, keep this secret; used for decryption and proof generation
+```
+
+### Key Methods
+
+#### `getNextAccountId()`
+
+Returns the account count. The ID that will be assigned to the **next** new account is `Number(count) + 1`.
+
+```javascript
+const count = await client.getNextAccountId();
+const myNewId = Number(count) + 1;
+await client.createAccount(wallet, keys.publicKey);
+```
+
+#### `createAccount(authWallet, elgamalPublicKey, options?)`
+
+Creates a new anonymous account via the relay. The relay pays gas.
+
+#### `updateAuthKeys(authWallet, accountId, { add, remove }, options?)`
+
+Adds or removes authorised signers for an anonymous account. Pass `ethers.Wallet` instances or raw uncompressed hex pubkey strings.
+
+#### `getAnonymousAccountInfo(accountId)`
+
+Returns on-chain state: `exists`, `finalized`, `hasPendingAction`, `txId`, `elgamalPubkey`, `authNonce`.
+
+#### `isAuthorizedSigner(accountId, signerAddress)`
+
+Checks whether an address is an authorised signer for the given account.
+
+#### `getBalance(accountId, tokenAddress, elGamalPrivateKey)`
+
+Returns decrypted balance totals in contract scale.
+
+- **Returns**: `{ amount, available, pending }`
+
+#### `getAnonymousBalance(accountId, tokenAddress, elGamalPrivateKey)`
+
+Returns decrypted balances including raw ciphertexts — useful when you need the ciphertext to generate proofs manually.
+
+- **Returns**: `{ available: { amount, ciphertext }, pending: { amount, ciphertext } }`
+
+#### `deposit(authWallet, accountId, tokenAddress, amount, options?)`
+
+Deposits tokens into an anonymous account. The **user pays gas** for this operation. Handles ERC-20 approval automatically.
+
+```javascript
+const result = await client.deposit(wallet, accountId, tokenAddress, ethers.parseUnits("10", 6));
+await client.waitForRequest(result.request_id);
+```
+
+#### `transferToPublic(authWallet, accountId, params, options?)`
+
+Transfers from an anonymous account to a public EVM address. The relay pays gas.
+
+**Auto-proof mode** (recommended):
+```javascript
+const result = await client.transferToPublic(wallet, accountId, {
+  recipient: "0xRecipientAddress",
+  token: tokenAddress,
+  elGamalPrivateKey: keys.privateKey,
+  amount: ethers.parseUnits("5", 6),
+});
+```
+
+**Manual proof mode** (advanced):
+```javascript
+const proofHex = await client.generateTransferProof(keys.privateKey, {
+  currentBalanceCiphertext: ciphertext,
+  currentBalanceContractScale: balanceInContractScale,
+  transferAmountContractScale: amountInContractScale,
+  destinationPublicKey: recipientElGamalPubkey,
+});
+const result = await client.transferToPublic(wallet, accountId, {
+  recipient: "0xRecipientAddress",
+  token: tokenAddress,
+  proof: proofHex,
+});
+```
+
+#### `transferToAnonymous(authWallet, senderAccountId, params, options?)`
+
+Transfers between two anonymous accounts. The relay pays gas.
+
+```javascript
+const result = await client.transferToAnonymous(wallet, senderAccountId, {
+  recipientId: recipientAccountId,
+  token: tokenAddress,
+  elGamalPrivateKey: keys.privateKey,
+  amount: ethers.parseUnits("3", 6),
+});
+```
+
+#### `applyPending(authWallet, accountId, options?)`
+
+Moves a pending incoming balance into available. Must be called after receiving an anonymous-to-anonymous transfer. The relay pays gas.
+
+#### `withdraw(authWallet, accountId, params, options?)`
+
+Withdraws from an anonymous account to a public EVM address. The relay pays gas.
+
+```javascript
+const result = await client.withdraw(wallet, accountId, {
+  destination: "0xDestinationAddress",
+  token: tokenAddress,
+  plainAmount: ethers.parseUnits("2", 6),
+  elGamalPrivateKey: keys.privateKey,
+});
+```
+
+#### Request Tracking
+
+All relay operations return a `{ request_id, tx_hash, status }` object. Use the following to track completion:
+
+```javascript
+// Poll until terminal state (completed / confirmed / failed)
+const final = await client.waitForRequest(result.request_id);
+
+// Get current status
+const status = await client.getRequestStatus(result.request_id);
+
+// Get full event history (useful for reconnect/recovery)
+const history = await client.getRequestEvents(result.request_id);
+```
+
+---
+
+## End-to-End Flow Examples
+
+### Confidential Flow (ConfidentialTransferClient)
+
+```javascript
+import { ConfidentialTransferClient } from "@fairblock/stabletrust";
+import { ethers } from "ethers";
+
+const client = new ConfidentialTransferClient("https://sepolia.base.org", 84532);
+const wallet = new ethers.Wallet(process.env.PRIVATE_KEY);
+const tokenAddress = "0xYourTokenAddress";
+const tokenDecimals = 6;
+
+// 1. Ensure account exists and get encryption keys
+const keys = await client.ensureAccount(wallet);
+
+// 2. Deposit
+const depositAmount = ethers.parseUnits("10", tokenDecimals);
+await client.confidentialDeposit(wallet, tokenAddress, depositAmount);
+
+// 3. Check balance
+const balance = await client.getConfidentialBalance(wallet.address, keys.privateKey, tokenAddress);
+console.log("Available:", ethers.formatUnits(balance.available.amount, tokenDecimals));
+
+// 4. Transfer (recipient must have called ensureAccount)
+const transferAmount = ethers.parseUnits("5", tokenDecimals);
+await client.confidentialTransfer(wallet, recipientAddress, tokenAddress, transferAmount);
+
+// 5. Withdraw
+const withdrawAmount = ethers.parseUnits("2", tokenDecimals);
+await client.withdraw(wallet, tokenAddress, withdrawAmount);
+```
+
+### Anonymous Flow (AnonymousTransferClient)
+
+```javascript
+import { AnonymousTransferClient } from "@fairblock/stabletrust";
+import { ethers } from "ethers";
+
+const client = new AnonymousTransferClient({
+  fairycloakUrl: "http://127.0.0.1:8080",
+  diamondAddress: "0xYourDiamondAddress",
+  chainId: 84532,
+  rpcUrl: "https://sepolia.base.org",
+});
+const wallet = new ethers.Wallet(process.env.PRIVATE_KEY);
+const tokenAddress = "0xYourTokenAddress";
+const tokenDecimals = 6;
+
+// 1. Determine the ID your account will get, then create it
+const count = await client.getNextAccountId();
+const accountId = Number(count) + 1;
+const keys = await client.deriveAnonymousKeys(wallet, accountId);
+await client.createAccount(wallet, keys.publicKey);
+
+// 2. Deposit (user pays gas)
+const depositResult = await client.deposit(wallet, accountId, tokenAddress, ethers.parseUnits("10", tokenDecimals));
+await client.waitForRequest(depositResult.request_id);
+
+// 3. Check balance
+const balance = await client.getBalance(accountId, tokenAddress, keys.privateKey);
+console.log("Available:", balance.available, "Pending:", balance.pending);
+
+// 4. Transfer to a public address (relay pays gas)
+const transferResult = await client.transferToPublic(wallet, accountId, {
+  recipient: "0xRecipientAddress",
+  token: tokenAddress,
+  elGamalPrivateKey: keys.privateKey,
+  amount: ethers.parseUnits("3", tokenDecimals),
+});
+await client.waitForRequest(transferResult.request_id);
+
+// 5. Withdraw (relay pays gas)
+const withdrawResult = await client.withdraw(wallet, accountId, {
+  destination: wallet.address,
+  token: tokenAddress,
+  plainAmount: ethers.parseUnits("2", tokenDecimals),
+  elGamalPrivateKey: keys.privateKey,
+});
+await client.waitForRequest(withdrawResult.request_id);
+```
+
+---
 
 ## Error Handling
 
-The SDK provides descriptive error messages for common issues. Here are some typical scenarios:
-
 ```javascript
 try {
-  await client.confidentialTransfer(
-    signer,
-    recipientAddress,
-    tokenAddress,
-    amount,
-  );
+  await client.confidentialTransfer(signer, recipientAddress, tokenAddress, amount);
 } catch (error) {
   if (error.message.includes("Insufficient balance")) {
     console.error("Transfer amount exceeds available balance");
@@ -243,61 +450,61 @@ try {
 
 ### Common Issues and Solutions
 
-| Issue                            | Cause                                                   | Solution                                            |
-| :------------------------------- | :------------------------------------------------------ | :-------------------------------------------------- |
-| "Account does not exist"         | Recipient hasn't initialized their confidential account | Recipient must call `ensureAccount()` first         |
-| "Insufficient balance"           | Transfer amount exceeds available confidential balance  | Deposit more tokens or reduce transfer amount       |
-| "Insufficient fee token balance" | Not enough PathUSD on Tempo chain for fees              | Top up fee token balance before transferring        |
-| "Account finalization timeout"   | Account creation is still processing                    | Wait a few minutes and retry the operation          |
-| "Proof generation failed"        | Invalid inputs or cryptographic operation error         | Verify all parameters and ensure sufficient balance |
+| Issue | Cause | Solution |
+| :--- | :--- | :--- |
+| "Account does not exist" | Recipient hasn't initialized their confidential account | Recipient must call `ensureAccount()` first |
+| "Insufficient balance" | Transfer amount exceeds available confidential balance | Deposit more tokens or reduce transfer amount |
+| "Account finalization timeout" | Account creation is still processing | Wait a few minutes and retry |
+| "Proof generation failed" | Invalid inputs or cryptographic operation error | Verify all parameters and ensure sufficient balance |
+| "Amount too small" | Amount rounds to 0 in contract scale | Use a larger amount (minimum depends on token decimals) |
+| Fairycloak HTTP error | Relay unreachable or request rejected | Check the relay URL, API key, and account authorization |
+
+---
 
 ## Performance Metrics
 
-The following are estimated execution times for standard operations within the confidential flow. Please note that these durations may vary based on network congestion and client hardware performance.
-
-The following are estimated execution times for standard operations within the confidential flow. Please note that these durations may vary based on network congestion and client hardware performance.
+The following are estimated execution times for standard operations. Durations may vary based on network congestion and hardware.
 
 | Operation | Avg Duration |
-| :-------- | :----------- |
-| Creation  | 45s          |
-| Deposit   | 63s          |
-| Transfer  | 58s          |
-| Withdraw  | 58s          |
+| :--- | :--- |
+| Account Creation | 45s |
+| Deposit | 63s |
+| Transfer | 58s |
+| Withdraw | 58s |
+
+---
 
 ## Security Considerations
-
-When using the StableTrust SDK, follow these best practices to ensure the security of your confidential transactions:
 
 1. **Private Key Management**
    - Never expose or log private keys or seed phrases
    - Store private keys securely (e.g., hardware wallets, encrypted vaults)
-   - Derived keys are sensitive cryptographic material—handle with care
+   - Anonymous account `privateKey` values are sensitive — treat them the same as wallet private keys
 
 2. **Signer Security**
    - Use secure signer implementations (e.g., hardware wallets, encrypted key stores)
    - Avoid using signers with exposed private keys in production
-   - Keep your ethers.js provider and signer in sync with your security setup
 
 3. **Network Security**
    - Use HTTPS-only RPC endpoints
-   - Verify contract addresses before initialization to prevent man-in-the-middle attacks
-   - Consider using dedicated RPC providers for production environments
+   - Verify contract and diamond addresses before initialization
+   - Consider dedicated RPC providers for production environments
 
 4. **Account Initialization**
-   - Always call `ensureAccount()` before performing any confidential operations
+   - For `ConfidentialTransferClient`: always call `ensureAccount()` before any operation
+   - For `AnonymousTransferClient`: derive and securely store keys before creating an account
    - Verify that recipient accounts exist before transferring funds
-   - Allow sufficient time for account finalization before proceeding with operations
 
 5. **Balance Verification**
-
-- Check available balance before initiating transfers
-- Be aware of transaction fees that may vary by network
-- On Tempo chain, ensure sufficient PathUSD balance for fee payment
+   - Check available balance before initiating transfers
+   - Anonymous transfers between anonymous accounts require `applyPending()` before the recipient can spend
 
 6. **Error Handling**
    - Implement comprehensive error handling for all SDK operations
-   - Log errors appropriately without exposing sensitive information
-   - Implement retry logic for transient failures (network timeouts, etc.)
+   - Log errors without exposing sensitive information
+   - Implement retry logic for transient network failures
+
+---
 
 ## Resources
 

@@ -12,13 +12,13 @@ dotenv.config();
  */
 
 const CHAINS = [
-  // {
-  //   network: "Stable",
-  //   chainId: 2201,
-  //   tokenAddress: "0x78Cf24370174180738C5B8E352B6D14c83a6c9A9",
-  //   rpcUrl: "https://rpc.testnet.stable.xyz",
-  //   explorerUrl: "https://testnet.stablescan.xyz/tx/",
-  // },
+  {
+    network: "Stable",
+    chainId: 2201,
+    tokenAddress: "0x78Cf24370174180738C5B8E352B6D14c83a6c9A9",
+    rpcUrl: "https://rpc.testnet.stable.xyz",
+    explorerUrl: "https://testnet.stablescan.xyz/tx/",
+  },
   {
     network: "Arc",
     chainId: 5042002,
@@ -26,34 +26,34 @@ const CHAINS = [
     rpcUrl: "https://rpc.testnet.arc.network",
     explorerUrl: "https://testnet.arcscan.app/tx/",
   },
-  // {
-  //   network: "Base",
-  //   chainId: 84532,
-  //   tokenAddress: "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
-  //   rpcUrl: "https://base-testnet.api.pocket.network",
-  //   explorerUrl: "https://sepolia.basescan.org/tx/",
-  // },
-  // {
-  //   network: "Ethereum",
-  //   chainId: 11155111,
-  //   tokenAddress: "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238",
-  //   rpcUrl: "https://ethereum-sepolia-rpc.publicnode.com",
-  //   explorerUrl: "https://sepolia.etherscan.io/tx/",
-  // },
-  // {
-  //   network: "Arbitrum",
-  //   chainId: 421614,
-  //   tokenAddress: "0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d",
-  //   rpcUrl: "https://arbitrum-sepolia-testnet.api.pocket.network",
-  //   explorerUrl: "https://sepolia.arbiscan.io/tx/",
-  // },
-  // {
-  //   network: "Tempo",
-  //   chainId: 42431,
-  //   tokenAddress: "0x20c0000000000000000000000000000000000000",
-  //   rpcUrl: "https://rpc.moderato.tempo.xyz",
-  //   explorerUrl: "https://explore.tempo.xyz/tx/",
-  // },
+  {
+    network: "Base",
+    chainId: 84532,
+    tokenAddress: "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+    rpcUrl: "https://base-testnet.api.pocket.network",
+    explorerUrl: "https://sepolia.basescan.org/tx/",
+  },
+  {
+    network: "Ethereum",
+    chainId: 11155111,
+    tokenAddress: "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238",
+    rpcUrl: "https://ethereum-sepolia-rpc.publicnode.com",
+    explorerUrl: "https://sepolia.etherscan.io/tx/",
+  },
+  {
+    network: "Arbitrum",
+    chainId: 421614,
+    tokenAddress: "0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d",
+    rpcUrl: "https://arbitrum-sepolia-testnet.api.pocket.network",
+    explorerUrl: "https://sepolia.arbiscan.io/tx/",
+  },
+  {
+    network: "Tempo",
+    chainId: 42431,
+    tokenAddress: "0x20c0000000000000000000000000000000000000",
+    rpcUrl: "https://rpc.moderato.tempo.xyz",
+    explorerUrl: "https://explore.tempo.xyz/tx/",
+  },
 ];
 
 const actionSummary = [];
