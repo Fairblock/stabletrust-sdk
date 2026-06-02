@@ -84,7 +84,7 @@ declare module "@fairblock/stabletrust" {
   }
 
   export interface TransferToAnonymousParams {
-    recipientId: number | bigint;
+    recipientId: string;
     token: string;
     /** Pre-computed ZK proof hex. Required if elGamalPrivateKey is not provided. */
     proof?: string;
@@ -167,18 +167,13 @@ declare module "@fairblock/stabletrust" {
     /**
      * Read the current authNonce for an anonymous account.
      */
-    getAuthNonce(accountId: number | bigint): Promise<bigint>;
-
-    /**
-     * Read the next anonymous account ID that will be assigned.
-     */
-    getNextAccountId(): Promise<bigint>;
+    getAuthNonce(accountId: string): Promise<bigint>;
 
     /**
      * Check whether an address is an authorised signer for an anonymous account.
      */
     isAuthorizedSigner(
-      accountId: number | bigint,
+      accountId: string,
       signerAddress: string,
     ): Promise<boolean>;
 
@@ -211,7 +206,7 @@ declare module "@fairblock/stabletrust" {
      */
     deriveAnonymousKeys(
       authWallet: ethers.Wallet | ethers.Signer,
-      accountId: number | bigint,
+      accountId: string,
     ): Promise<Keys>;
 
     // ── proof generation ────────────────────────────────────────────
@@ -238,10 +233,12 @@ declare module "@fairblock/stabletrust" {
 
     /**
      * Create a new anonymous account. The relay pays gas.
+     * @param accountId Caller-chosen account ID (non-empty string, case-sensitive)
      * @param elgamalPublicKey Base64 or "0x"-prefixed hex (32 bytes)
      */
     createAccount(
       authWallet: ethers.Wallet | ethers.Signer,
+      accountId: string,
       elgamalPublicKey: string,
       options?: DeadlineOptions,
     ): Promise<FairycloakResponse>;
@@ -252,7 +249,7 @@ declare module "@fairblock/stabletrust" {
      */
     updateAuthKeys(
       authWallet: ethers.Wallet | ethers.Signer,
-      accountId: number | bigint,
+      accountId: string,
       keys: UpdateAuthKeysParams,
       options?: DeadlineOptions,
     ): Promise<FairycloakResponse>;
@@ -263,7 +260,7 @@ declare module "@fairblock/stabletrust" {
      */
     deposit(
       authWallet: ethers.Wallet,
-      accountId: number | bigint,
+      accountId: string,
       tokenAddress: string,
       amount: bigint | string | number,
       options?: DepositOptions,
@@ -277,7 +274,7 @@ declare module "@fairblock/stabletrust" {
      */
     transferToPublic(
       authWallet: ethers.Wallet | ethers.Signer,
-      accountId: number | bigint,
+      accountId: string,
       params: TransferToPublicParams,
       options?: DeadlineOptions,
     ): Promise<FairycloakResponse>;
@@ -290,7 +287,7 @@ declare module "@fairblock/stabletrust" {
      */
     transferToAnonymous(
       authWallet: ethers.Wallet | ethers.Signer,
-      senderAccountId: number | bigint,
+      senderAccountId: string,
       params: TransferToAnonymousParams,
       options?: DeadlineOptions,
     ): Promise<FairycloakResponse>;
@@ -300,7 +297,7 @@ declare module "@fairblock/stabletrust" {
      */
     applyPending(
       authWallet: ethers.Wallet | ethers.Signer,
-      accountId: number | bigint,
+      accountId: string,
       options?: DeadlineOptions,
     ): Promise<FairycloakResponse>;
 
@@ -313,7 +310,7 @@ declare module "@fairblock/stabletrust" {
      */
     withdraw(
       authWallet: ethers.Wallet | ethers.Signer,
-      accountId: number | bigint,
+      accountId: string,
       params: WithdrawParams,
       options?: DeadlineOptions,
     ): Promise<FairycloakResponse>;

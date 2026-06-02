@@ -1,17 +1,20 @@
 /**
  * Anonymous Confidential Transfer — Basic Flow
  *
- *   [1] Create two anonymous accounts (anon1, anon2)
- *   [2] Deposit tokens into anon1
- *   [3] Transfer anon1 → anon2
- *   [4] Apply pending balance for anon2
- *   [5] Withdraw anon2 → public address
+ *   [1] Generate two UUIDs as account IDs
+ *   [2] Derive ElGamal keypairs for both accounts
+ *   [3] Create both anonymous accounts via Fairycloak
+ *   [4] Deposit tokens into anon1
+ *   [5] Transfer anon1 → anon2
+ *   [6] Apply pending balance for anon2
+ *   [7] Withdraw anon2 → public address
  *
  * Run:
  *   node examples/anonymous-flow.js
  */
 
 import { ethers } from "ethers";
+import { randomUUID } from "crypto";
 import dotenv from "dotenv";
 import { AnonymousTransferClient } from "@fairblock/stabletrust";
 
@@ -64,14 +67,6 @@ async function logBalance(client, accountId, keys, token, _decimals, label) {
   return bal;
 }
 
-function diff(prev, next) {
-  return {
-    avail: next.available - prev.available,
-    pending: next.pending - prev.pending,
-    total: next.amount - prev.amount,
-  };
-}
-
 /**
  * Poll until hasPendingAction flips to false (CW→EVM state settled).
  */
@@ -122,17 +117,20 @@ async function main() {
     rpcUrl: EVM_RPC,
   });
 
-  // ── [1] Create accounts ──────────────────────────────────────────────────────
+  // ── [1] Generate account IDs ─────────────────────────────────────────────────
 
-  console.log("\n── [1] Create anonymous accounts ───────────────────────");
+  console.log("\n── [1] Generate anonymous account IDs ──────────────────");
 
-  const nextId = await client.getNextAccountId();
-  const anon1Id = Number(nextId) + 1;
-  const anon2Id = anon1Id + 1;
-  log("anon1 id will be:", anon1Id);
-  log("anon2 id will be:", anon2Id);
+  const anon1Id = randomUUID();
+  const anon2Id = randomUUID();
+  log("anon1 id:", anon1Id);
+  log("anon2 id:", anon2Id);
 
-  log("Deriving ElGamal keypairs …");
+  // ── [2] Derive ElGamal keypairs ──────────────────────────────────────────────
+
+  console.log("\n── [2] Derive ElGamal keypairs ─────────────────────────");
+  log("Deriving ElGamal keypairs from wallets + account IDs …");
+
   const [anon1Keys, anon2Keys] = await Promise.all([
     client.deriveAnonymousKeys(anon1Wallet, anon1Id),
     client.deriveAnonymousKeys(anon2Wallet, anon2Id),
@@ -140,13 +138,17 @@ async function main() {
   log("anon1 pubkey:", anon1Keys.publicKey);
   log("anon2 pubkey:", anon2Keys.publicKey);
 
+  // ── [3] Create accounts ──────────────────────────────────────────────────────
+
+  console.log("\n── [3] Create anonymous accounts ───────────────────────");
+
   log(`  creating anon1 (id=${anon1Id}) …`);
-  const cr1 = await client.createAccount(anon1Wallet, anon1Keys.publicKey);
+  const cr1 = await client.createAccount(anon1Wallet, anon1Id, anon1Keys.publicKey);
   log(`  request_id: ${cr1.request_id}  status: ${cr1.status}`);
   if (cr1.error) log(`  [!] Error: ${cr1.error}`);
 
   log(`  creating anon2 (id=${anon2Id}) …`);
-  const cr2 = await client.createAccount(anon2Wallet, anon2Keys.publicKey);
+  const cr2 = await client.createAccount(anon2Wallet, anon2Id, anon2Keys.publicKey);
   log(`  request_id: ${cr2.request_id}  status: ${cr2.status}`);
   if (cr2.error) log(`  [!] Error: ${cr2.error}`);
 
@@ -185,9 +187,9 @@ async function main() {
     "anon2:post-create",
   );
 
-  // ── [2] Deposit ──────────────────────────────────────────────────────────────
+  // ── [4] Deposit ──────────────────────────────────────────────────────────────
 
-  console.log("\n── [2] Deposit into anon1 ──────────────────────────────");
+  console.log("\n── [4] Deposit into anon1 ──────────────────────────────");
   log(`Depositing ${fmt(DEPOSIT_AMOUNT, TOKEN_DECIMALS)} tokens into anon1 (anon1 pays gas) …`);
 
   const dep = await client.deposit(
@@ -216,9 +218,9 @@ async function main() {
     "anon1:post-deposit",
   );
 
-  // ── [3] Transfer anon1 → anon2 ───────────────────────────────────────────────
+  // ── [5] Transfer anon1 → anon2 ───────────────────────────────────────────────
 
-  console.log("\n── [3] Transfer anon1 → anon2 ──────────────────────────");
+  console.log("\n── [5] Transfer anon1 → anon2 ──────────────────────────");
   log(`Transferring ${fmt(TRANSFER_AMOUNT, TOKEN_DECIMALS)} tokens …`);
 
   const txAnon = await client.transferToAnonymous(anon1Wallet, anon1Id, {
@@ -261,9 +263,9 @@ async function main() {
     "anon2:post-transfer",
   );
 
-  // ── [4] Apply pending for anon2 ──────────────────────────────────────────────
+  // ── [6] Apply pending for anon2 ──────────────────────────────────────────────
 
-  console.log("\n── [4] Apply pending balance for anon2 ─────────────────");
+  console.log("\n── [6] Apply pending balance for anon2 ─────────────────");
   log("Moving incoming credit from pending → available …");
 
   const ap = await client.applyPending(anon2Wallet, anon2Id);
@@ -287,9 +289,9 @@ async function main() {
     "anon2:post-apply",
   );
 
-  // ── [5] Withdraw anon2 → public address ──────────────────────────────────────
+  // ── [7] Withdraw anon2 → public address ──────────────────────────────────────
 
-  console.log("\n── [5] Withdraw from anon2 ─────────────────────────────");
+  console.log("\n── [7] Withdraw from anon2 ─────────────────────────────");
   log(`Withdrawing ${fmt(WITHDRAW_AMOUNT, TOKEN_DECIMALS)} tokens → ${withdrawDest} …`);
 
   const wd = await client.withdraw(anon2Wallet, anon2Id, {
@@ -323,6 +325,8 @@ async function main() {
   console.log("\n═══════════════════════════════════════════════════════");
   console.log("  ✅ Anonymous flow completed!");
   console.log("═══════════════════════════════════════════════════════");
+  log("anon1 id   :", anon1Id);
+  log("anon2 id   :", anon2Id);
   log("Deposited  :", ethers.formatUnits(DEPOSIT_AMOUNT, TOKEN_DECIMALS), "tokens → anon1");
   log("Transferred:", ethers.formatUnits(TRANSFER_AMOUNT, TOKEN_DECIMALS), "tokens → anon2");
   log("Withdrawn  :", ethers.formatUnits(WITHDRAW_AMOUNT, TOKEN_DECIMALS), "tokens →", withdrawDest);

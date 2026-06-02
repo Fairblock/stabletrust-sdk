@@ -12,7 +12,7 @@ const DEFAULT_DEADLINE_OFFSET = 3600;
 
 // Minimal ABI — only used for deposit calldata encoding (reads go through Fairycloak views)
 const DEPOSIT_INTERFACE = new ethers.Interface([
-  "function depositAnonymous(uint64 accountId, address token, uint256 plainAmount, uint256 authNonce, uint256 deadline, bytes authSig) external",
+  "function depositAnonymous(string accountId, address token, uint256 plainAmount, uint256 authNonce, uint256 deadline, bytes authSig) external",
 ]);
 
 /**
@@ -184,7 +184,7 @@ export class AnonymousTransferClient {
   /**
    * Get on-chain core state for an anonymous account.
    *
-   * @param {number|bigint} accountId
+   * @param {string} accountId
    * @returns {Promise<{exists:boolean, finalized:boolean, hasPendingAction:boolean, txId:bigint, elgamalPubkey:string, authNonce:bigint}>}
    */
   async getAnonymousAccountInfo(accountId) {
@@ -215,7 +215,7 @@ export class AnonymousTransferClient {
   /**
    * Read the current authNonce for an anonymous account from the chain.
    *
-   * @param {number|bigint} accountId
+   * @param {string} accountId
    * @returns {Promise<bigint>}
    */
   async getAuthNonce(accountId) {
@@ -224,31 +224,9 @@ export class AnonymousTransferClient {
   }
 
   /**
-   * Read the current anonymous account count from the contract.
-   *
-   * The contract assigns IDs starting at 1 and incrementing sequentially.
-   * The ID of the *next* account to be created is therefore `count + 1`.
-   *
-   * ```js
-   * const count   = await client.getNextAccountId();
-   * const myId    = Number(count) + 1;  // ID that will be assigned
-   * await client.createAccount(wallet, pubkey);
-   * ```
-   *
-   * @returns {Promise<bigint>} Current account count (not the next ID)
-   */
-  async getNextAccountId() {
-    const data = await this._fetch(
-      "GET",
-      "/v1/views/anonymous/next-account-id",
-    );
-    return BigInt(data.result);
-  }
-
-  /**
    * Check whether an address is an authorised signer for an anonymous account.
    *
-   * @param {number|bigint} accountId
+   * @param {string} accountId
    * @param {string} signerAddress
    * @returns {Promise<boolean>}
    */
@@ -266,7 +244,7 @@ export class AnonymousTransferClient {
    * Fetch the raw combined ciphertext (base64) for an anonymous account's balance.
    * Returns null when no balance has been set yet.
    *
-   * @param {number|bigint} accountId
+   * @param {string} accountId
    * @param {string} tokenAddress
    * @param {"available"|"pending"} [type="available"]
    * @returns {Promise<string|null>} Base64 ciphertext or null
@@ -293,7 +271,7 @@ export class AnonymousTransferClient {
    * Decrypt an anonymous account's balance from the chain.
    * Returns amount in **contract scale** (the raw WASM-decrypted value).
    *
-   * @param {number|bigint} accountId
+   * @param {string} accountId
    * @param {string} tokenAddress
    * @param {string} elGamalPrivateKey - Base64 private key
    * @param {"available"|"pending"} [type="available"]
@@ -325,7 +303,7 @@ export class AnonymousTransferClient {
    * Amounts are returned in **contract scale** (the encrypted integer stored on-chain,
    * equivalent to `tokenAmount × 100 / 10^decimals`).
    *
-   * @param {number|bigint} accountId
+   * @param {string} accountId
    * @param {string} tokenAddress - ERC-20 token address
    * @param {string} elGamalPrivateKey - ElGamal private key (base64) for decryption
    * @returns {Promise<{available: {amount: number, ciphertext: string|null}, pending: {amount: number, ciphertext: string|null}}>}
@@ -362,7 +340,7 @@ export class AnonymousTransferClient {
    * Store the returned `privateKey` securely — it cannot be recovered without the wallet.
    *
    * @param {ethers.Wallet|ethers.Signer} authWallet
-   * @param {number|bigint} accountId
+   * @param {string} accountId
    * @returns {Promise<{publicKey:string, privateKey:string}>} Base-64 encoded keypair
    */
   async deriveAnonymousKeys(authWallet, accountId) {
@@ -379,25 +357,25 @@ export class AnonymousTransferClient {
       const types = {
         DeriveAnonymousElGamalKey: [
           { name: "purpose", type: "string" },
-          { name: "accountId", type: "uint256" },
+          { name: "accountId", type: "string" },
           { name: "user", type: "address" },
           { name: "context", type: "bytes32" },
         ],
       };
       const contextHash = ethers.keccak256(
         ethers.AbiCoder.defaultAbiCoder().encode(
-          ["uint256", "address", "uint256", "string"],
+          ["uint256", "address", "string", "string"],
           [
             this.chainId,
             this.diamondAddress,
-            BigInt(accountId),
+            String(accountId),
             "anonymous-main",
           ],
         ),
       );
       const message = {
         purpose: "anonymous-elgamal-key-derive-v1",
-        accountId: BigInt(accountId),
+        accountId: String(accountId),
         user: address.toLowerCase(),
         context: contextHash,
       };
@@ -527,12 +505,13 @@ export class AnonymousTransferClient {
    * The relay submits the `createAnonymousAccount` transaction and pays gas.
    *
    * @param {ethers.Wallet|ethers.Signer} authWallet - Initial auth signer
+   * @param {string} accountId - Caller-chosen account ID (non-empty string, case-sensitive)
    * @param {string} elgamalPublicKey - ElGamal public key as base64 or "0x"-prefixed hex (32 bytes)
    * @param {Object} [options]
    * @param {number} [options.deadlineOffset=3600] - Deadline in seconds from now
    * @returns {Promise<{request_id:string, tx_hash:string, status:string, action:string}>}
    */
-  async createAccount(authWallet, elgamalPublicKey, options = {}) {
+  async createAccount(authWallet, accountId, elgamalPublicKey, options = {}) {
     const { deadlineOffset = DEFAULT_DEADLINE_OFFSET } = options;
     try {
       const authAddress = await authWallet.getAddress();
@@ -558,6 +537,7 @@ export class AnonymousTransferClient {
       const domain = this._buildDomain();
       const types = {
         AnonymousCreate: [
+          { name: "accountId", type: "string" },
           { name: "initialSignersHash", type: "bytes32" },
           { name: "elgamalPubkeyHash", type: "bytes32" },
           { name: "clientRequestId", type: "bytes32" },
@@ -565,6 +545,7 @@ export class AnonymousTransferClient {
         ],
       };
       const value = {
+        accountId,
         initialSignersHash,
         elgamalPubkeyHash,
         clientRequestId,
@@ -574,6 +555,7 @@ export class AnonymousTransferClient {
       const signature = await authWallet.signTypedData(domain, types, value);
 
       return await this._fetch("POST", "/v1/anonymous/accounts", {
+        account_id: accountId,
         elgamal_pubkey: elgamalHex,
         auth_pubkeys: [authPubkey],
         client_request_id: clientRequestId,
@@ -591,7 +573,7 @@ export class AnonymousTransferClient {
    * Update the set of authorised signers for an anonymous account via Fairycloak.
    *
    * @param {ethers.Wallet|ethers.Signer} authWallet - A currently authorised signer
-   * @param {number|bigint} accountId
+   * @param {string} accountId
    * @param {Object} keys
    * @param {Array<string|ethers.Wallet>} [keys.add=[]]    - Pubkeys/wallets to add
    * @param {Array<string|ethers.Wallet>} [keys.remove=[]] - Pubkeys/wallets to remove
@@ -632,7 +614,7 @@ export class AnonymousTransferClient {
       const domain = this._buildDomain();
       const types = {
         AnonymousUpdateKeys: [
-          { name: "accountId", type: "uint64" },
+          { name: "accountId", type: "string" },
           { name: "addSignersHash", type: "bytes32" },
           { name: "removeSignersHash", type: "bytes32" },
           { name: "authNonce", type: "uint256" },
@@ -640,7 +622,7 @@ export class AnonymousTransferClient {
         ],
       };
       const value = {
-        accountId: BigInt(accountId),
+        accountId: String(accountId),
         addSignersHash,
         removeSignersHash,
         authNonce,
@@ -650,7 +632,7 @@ export class AnonymousTransferClient {
       const signature = await authWallet.signTypedData(domain, types, value);
 
       return await this._fetch("POST", "/v1/anonymous/keys/update", {
-        account_id: Number(accountId),
+        account_id: accountId,
         add_pubkeys: addPubkeys,
         remove_pubkeys: removePubkeys,
         auth_nonce: String(authNonce),
@@ -677,7 +659,7 @@ export class AnonymousTransferClient {
    *   4. Submit to Fairycloak `/v1/anonymous/deposit/raw-tx`
    *
    * @param {ethers.Wallet} authWallet - Wallet that owns the tokens and signs the tx
-   * @param {number|bigint} accountId - Target anonymous account ID
+   * @param {string} accountId - Target anonymous account ID
    * @param {string} tokenAddress - ERC-20 token address
    * @param {bigint|string|number} amount - Amount in token units (wei-scaled by token decimals)
    * @param {Object} [options]
@@ -751,7 +733,7 @@ export class AnonymousTransferClient {
       const domain = this._buildDomain();
       const types = {
         AnonymousDeposit: [
-          { name: "accountId", type: "uint64" },
+          { name: "accountId", type: "string" },
           { name: "token", type: "address" },
           { name: "plainAmount", type: "uint256" },
           { name: "authNonce", type: "uint256" },
@@ -759,7 +741,7 @@ export class AnonymousTransferClient {
         ],
       };
       const value = {
-        accountId: BigInt(accountId),
+        accountId: String(accountId),
         token: tokenAddress,
         plainAmount: plainAmountContractScale,
         authNonce,
@@ -772,7 +754,7 @@ export class AnonymousTransferClient {
       const calldata = DEPOSIT_INTERFACE.encodeFunctionData(
         "depositAnonymous",
         [
-          BigInt(accountId),
+          accountId,
           tokenAddress,
           plainAmountContractScale,
           authNonce,
@@ -834,7 +816,7 @@ export class AnonymousTransferClient {
    * **Manual proof mode**: provide a pre-computed `proof` hex string from `generateTransferProof()`.
    *
    * @param {ethers.Wallet|ethers.Signer} authWallet - Authorised signer for the anonymous account
-   * @param {number|bigint} accountId - Sender's anonymous account ID
+   * @param {string} accountId - Sender's anonymous account ID
    * @param {Object} params
    * @param {string}  params.recipient             - Recipient EVM address (must have a confidential account)
    * @param {string}  params.token                - Token address
@@ -892,7 +874,7 @@ export class AnonymousTransferClient {
               `Recipient ${recipient} has no confidential account on-chain`,
             );
           destPubkey = Buffer.from(
-            ethers.getBytes(recipientData.result.pubkey),
+            ethers.getBytes(recipientData.result.elgamal_pubkey),
           ).toString("base64");
         }
 
@@ -923,7 +905,7 @@ export class AnonymousTransferClient {
       const domain = this._buildDomain();
       const types = {
         AnonymousTransferToPublic: [
-          { name: "senderId", type: "uint64" },
+          { name: "senderId", type: "string" },
           { name: "recipient", type: "address" },
           { name: "token", type: "address" },
           { name: "proofHash", type: "bytes32" },
@@ -932,7 +914,7 @@ export class AnonymousTransferClient {
         ],
       };
       const value = {
-        senderId: BigInt(accountId),
+        senderId: String(accountId),
         recipient,
         token,
         proofHash,
@@ -943,7 +925,7 @@ export class AnonymousTransferClient {
       const signature = await authWallet.signTypedData(domain, types, value);
 
       return await this._fetch("POST", "/v1/anonymous/transfers/public", {
-        sender_id: Number(accountId),
+        sender_id: accountId,
         recipient,
         token,
         proof: proofHex,
@@ -968,9 +950,9 @@ export class AnonymousTransferClient {
    * **Manual proof mode**: provide a pre-computed `proof` hex string from `generateTransferProof()`.
    *
    * @param {ethers.Wallet|ethers.Signer} authWallet - Authorised signer for the sender account
-   * @param {number|bigint} senderAccountId
+   * @param {string} senderAccountId
    * @param {Object} params
-   * @param {number|bigint} params.recipientId              - Recipient anonymous account ID
+   * @param {string}        params.recipientId              - Recipient anonymous account ID
    * @param {string}        params.token                   - Token address
    * @param {string}        [params.proof]                 - Pre-computed ZK proof ("0x..." hex)
    * @param {string}        [params.elGamalPrivateKey]     - ElGamal private key (base64) for auto-proof
@@ -1055,8 +1037,8 @@ export class AnonymousTransferClient {
       const domain = this._buildDomain();
       const types = {
         AnonymousTransferToAnonymous: [
-          { name: "senderId", type: "uint64" },
-          { name: "recipientId", type: "uint64" },
+          { name: "senderId", type: "string" },
+          { name: "recipientId", type: "string" },
           { name: "token", type: "address" },
           { name: "proofHash", type: "bytes32" },
           { name: "authNonce", type: "uint256" },
@@ -1064,8 +1046,8 @@ export class AnonymousTransferClient {
         ],
       };
       const value = {
-        senderId: BigInt(senderAccountId),
-        recipientId: BigInt(recipientId),
+        senderId: String(senderAccountId),
+        recipientId: String(recipientId),
         token,
         proofHash,
         authNonce,
@@ -1075,8 +1057,8 @@ export class AnonymousTransferClient {
       const signature = await authWallet.signTypedData(domain, types, value);
 
       return await this._fetch("POST", "/v1/anonymous/transfers/anonymous", {
-        sender_id: Number(senderAccountId),
-        recipient_id: Number(recipientId),
+        sender_id: senderAccountId,
+        recipient_id: recipientId,
         token,
         proof: proofHex,
         auth_nonce: String(authNonce),
@@ -1097,7 +1079,7 @@ export class AnonymousTransferClient {
    * this to move the pending credit into their available balance.
    *
    * @param {ethers.Wallet|ethers.Signer} authWallet
-   * @param {number|bigint} accountId
+   * @param {string} accountId
    * @param {Object} [options]
    * @param {number} [options.deadlineOffset=3600]
    * @returns {Promise<{request_id:string, tx_hash:string, status:string}>}
@@ -1111,13 +1093,13 @@ export class AnonymousTransferClient {
       const domain = this._buildDomain();
       const types = {
         AnonymousApplyPending: [
-          { name: "accountId", type: "uint64" },
+          { name: "accountId", type: "string" },
           { name: "authNonce", type: "uint256" },
           { name: "deadline", type: "uint256" },
         ],
       };
       const value = {
-        accountId: BigInt(accountId),
+        accountId: String(accountId),
         authNonce,
         deadline: BigInt(deadline),
       };
@@ -1125,7 +1107,7 @@ export class AnonymousTransferClient {
       const signature = await authWallet.signTypedData(domain, types, value);
 
       return await this._fetch("POST", "/v1/anonymous/apply", {
-        account_id: Number(accountId),
+        account_id: accountId,
         auth_nonce: String(authNonce),
         deadline: String(deadline),
         signature,
@@ -1147,7 +1129,7 @@ export class AnonymousTransferClient {
    * **Manual proof mode**: provide a pre-computed `proof` hex string from `generateWithdrawProof()`.
    *
    * @param {ethers.Wallet|ethers.Signer} authWallet - Authorised signer for the anonymous account
-   * @param {number|bigint} accountId
+   * @param {string} accountId
    * @param {Object} params
    * @param {string}             params.destination       - Destination EVM address
    * @param {string}             params.token            - Token address
@@ -1232,7 +1214,7 @@ export class AnonymousTransferClient {
       const domain = this._buildDomain();
       const types = {
         AnonymousWithdraw: [
-          { name: "accountId", type: "uint64" },
+          { name: "accountId", type: "string" },
           { name: "destination", type: "address" },
           { name: "token", type: "address" },
           { name: "plainAmount", type: "uint256" },
@@ -1242,7 +1224,7 @@ export class AnonymousTransferClient {
         ],
       };
       const value = {
-        accountId: BigInt(accountId),
+        accountId: String(accountId),
         destination,
         token,
         plainAmount: withdrawAmountContractScale,
@@ -1254,7 +1236,7 @@ export class AnonymousTransferClient {
       const signature = await authWallet.signTypedData(domain, types, value);
 
       return await this._fetch("POST", "/v1/anonymous/withdraw", {
-        account_id: Number(accountId),
+        account_id: accountId,
         destination,
         token,
         plain_amount: String(withdrawAmountContractScale),
@@ -1273,7 +1255,7 @@ export class AnonymousTransferClient {
   /**
    * Get total, available, and pending balance (contract scale).
    *
-   * @param {number|bigint} accountId
+   * @param {string} accountId
    * @param {string} tokenAddress
    * @param {string} elGamalPrivateKey
    * @returns {Promise<{ amount: number, available: number, pending: number }>}
