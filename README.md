@@ -236,19 +236,9 @@ const keys = await client.deriveAnonymousKeys(authWallet, accountId);
 
 ### Key Methods
 
-#### `getNextAccountId()`
+#### `createAccount(authWallet, accountId, elgamalPublicKey, options?)`
 
-Returns the account count. The ID that will be assigned to the **next** new account is `Number(count) + 1`.
-
-```javascript
-const count = await client.getNextAccountId();
-const myNewId = Number(count) + 1;
-await client.createAccount(wallet, keys.publicKey);
-```
-
-#### `createAccount(authWallet, elgamalPublicKey, options?)`
-
-Creates a new anonymous account via the relay. The relay pays gas.
+Creates a new anonymous account via the relay. The relay pays gas. `accountId` is a **caller-chosen string** (non-empty, case-sensitive) — pick any unique identifier you like (e.g. a UUID or a human-readable name).
 
 #### `updateAuthKeys(authWallet, accountId, { add, remove }, options?)`
 
@@ -429,11 +419,10 @@ const wallet = new ethers.Wallet(process.env.PRIVATE_KEY);
 const tokenAddress = "0xYourTokenAddress";
 const tokenDecimals = 6;
 
-// 1. Determine the ID your account will get, then create it
-const count = await client.getNextAccountId();
-const accountId = Number(count) + 1;
+// 1. Choose a unique account ID, derive keys, then create the account
+const accountId = "my-unique-account-id"; // any non-empty string you choose
 const keys = await client.deriveAnonymousKeys(wallet, accountId);
-await client.createAccount(wallet, keys.publicKey);
+await client.createAccount(wallet, accountId, keys.publicKey);
 
 // 2. Deposit (user pays gas)
 const depositResult = await client.deposit(
