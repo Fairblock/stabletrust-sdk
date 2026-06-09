@@ -146,6 +146,24 @@ declare module "@fairblock/stabletrust" {
     gasLimit?: bigint;
   }
 
+  export interface DepositFeesOptions extends DeadlineOptions {
+    gasLimit?: bigint;
+  }
+
+  export interface WithdrawFeesParams {
+    /** Fee token address (use `getFeeToken()` to get the active token). */
+    token: string;
+    /** Destination EVM address to receive the withdrawn tokens. */
+    destination: string;
+    /** Amount in raw ERC-20 units of the fee token. */
+    amount: bigint | string | number;
+  }
+
+  export interface WithdrawAllFeesParams {
+    /** Destination EVM address to receive all withdrawn fee tokens. */
+    destination: string;
+  }
+
   /**
    * AnonymousTransferClient — SDK class for anonymous confidential transfers via the Fairycloak relay.
    *
@@ -228,6 +246,67 @@ declare module "@fairblock/stabletrust" {
       elGamalPrivateKey: string,
       params: WithdrawProofParams,
     ): Promise<string>;
+
+    // ── prepaid fee reads ───────────────────────────────────────────
+
+    /**
+     * Get the currently configured fee token address from the contract.
+     * Deposits via `depositFees` must use this token.
+     */
+    getFeeToken(): Promise<string>;
+
+    /**
+     * Get the protocol fee amount in raw ERC-20 units of the fee token.
+     * This is the amount deducted per anonymous transfer. Returns 0n if no fee is set.
+     */
+    getFeeAmount(): Promise<bigint>;
+
+    /**
+     * Get the prepaid fee balance for an anonymous account and token (raw ERC-20 units).
+     * Use `getFeeToken()` to get the active fee token address.
+     */
+    getPrepaidFeeBalance(accountId: string, token: string): Promise<bigint>;
+
+    // ── prepaid fee actions ─────────────────────────────────────────
+
+    /**
+     * Deposit tokens into the prepaid fee reserve for an anonymous account.
+     * The user wallet pays gas for this raw EVM transaction.
+     * Handles ERC-20 approval automatically.
+     *
+     * The fee token is read from the contract — use `getFeeToken()` to see it.
+     * Use `getFeeAmount()` to see how much is deducted per transfer.
+     *
+     * @param amount Amount in raw ERC-20 units of the active fee token
+     */
+    depositFees(
+      authWallet: ethers.Wallet,
+      accountId: string,
+      amount: bigint | string | number,
+      options?: DepositFeesOptions,
+    ): Promise<FairycloakResponse>;
+
+    /**
+     * Withdraw a specific amount from the prepaid fee reserve. The relay pays gas.
+     * Supports historical fee tokens (after a fee-token rotation).
+     */
+    withdrawFees(
+      authWallet: ethers.Wallet | ethers.Signer,
+      accountId: string,
+      params: WithdrawFeesParams,
+      options?: DeadlineOptions,
+    ): Promise<FairycloakResponse>;
+
+    /**
+     * Withdraw all prepaid fee balances across all (including historical) fee tokens.
+     * The relay pays gas.
+     */
+    withdrawAllFees(
+      authWallet: ethers.Wallet | ethers.Signer,
+      accountId: string,
+      params: WithdrawAllFeesParams,
+      options?: DeadlineOptions,
+    ): Promise<FairycloakResponse>;
 
     // ── Fairycloak operations ───────────────────────────────────────
 

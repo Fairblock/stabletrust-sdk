@@ -10,9 +10,13 @@ const ANON_DOMAIN_VERSION = "1";
 // Default deadline offset: 1 hour
 const DEFAULT_DEADLINE_OFFSET = 3600;
 
-// Minimal ABI — only used for deposit calldata encoding (reads go through Fairycloak views)
+// Minimal ABI — only used for deposit/fee calldata encoding (reads go through Fairycloak views)
 const DEPOSIT_INTERFACE = new ethers.Interface([
   "function depositAnonymous(string accountId, address token, uint256 plainAmount, uint256 authNonce, uint256 deadline, bytes authSig) external",
+]);
+
+const ADD_FEES_INTERFACE = new ethers.Interface([
+  "function addFees(string accountId, address token, uint256 amount, uint256 authNonce, uint256 deadline, bytes signature) external payable",
 ]);
 
 /**
@@ -986,6 +990,8 @@ export class AnonymousTransferClient {
         });
       }
 
+      await this._assertSufficientPrepaidFees(accountId);
+
       const authNonce = await this.getAuthNonce(accountId);
       const deadline = this._makeDeadline(deadlineOffset);
       const proofHash = ethers.keccak256(proofHex);
@@ -1117,6 +1123,8 @@ export class AnonymousTransferClient {
           destinationPublicKey: destPubkey,
         });
       }
+
+      await this._assertSufficientPrepaidFees(senderAccountId);
 
       const authNonce = await this.getAuthNonce(senderAccountId);
       const deadline = this._makeDeadline(deadlineOffset);
@@ -1373,6 +1381,368 @@ export class AnonymousTransferClient {
       };
     } catch (e) {
       throw new Error(`Failed to get balance: ${e.message}`);
+    }
+  }
+
+  // ─────────────────── prepaid fee reads ─────────────────────────
+
+  /**
+   * Get the currently configured fee token address from the contract.
+   *
+   * Deposits via `depositFees` must use this token. Rotate-aware: the fee token
+   * can change over time, but existing balances for old tokens remain withdrawable.
+   *
+   * @returns {Promise<string>} Checksummed ERC-20 token address (or address(0) if none set)
+   */
+  async getFeeToken() {
+    try {
+      const data = await this._fetch("GET", "/v1/views/fee-token");
+      const raw = data.result ?? data;
+      const addr = typeof raw === "string" ? raw : raw.feeToken ?? raw;
+      return ethers.getAddress(addr);
+    } catch (e) {
+      throw new Error(`Failed to get fee token: ${e.message}`);
+    }
+  }
+
+  /**
+   * Get the currently configured protocol fee amount (in raw ERC-20 units of the fee token).
+   *
+   * This is the amount deducted from the prepaid reserve on each anonymous transfer.
+   * Returns 0n if no fee is configured.
+   *
+   * @returns {Promise<bigint>}
+   */
+  async getFeeAmount() {
+    try {
+      const data = await this._fetch("GET", "/v1/views/fee-amount");
+      return _parseBigInt(data.result ?? data);
+    } catch (e) {
+      throw new Error(`Failed to get fee amount: ${e.message}`);
+    }
+  }
+
+  /**
+   * Get the prepaid fee balance for an anonymous account and token (in raw ERC-20 units).
+   *
+   * @param {string} accountId
+   * @param {string} token - ERC-20 token address (use `getFeeToken()` to get the active fee token)
+   * @returns {Promise<bigint>}
+   */
+  async getPrepaidFeeBalance(accountId, token) {
+    try {
+      if (!ethers.isAddress(token))
+        throw new Error(`Invalid token address: ${token}`);
+      const data = await this._fetch(
+        "GET",
+        `/v1/views/anonymous/accounts/${accountId}/prepaid-fees/${token}`,
+      );
+      return _parseBigInt(data.result ?? data);
+    } catch (e) {
+      throw new Error(`Failed to get prepaid fee balance: ${e.message}`);
+    }
+  }
+
+  /**
+   * Check that the anonymous account has sufficient prepaid fees to cover one transfer.
+   * Throws a descriptive error if the balance is insufficient.
+   * @private
+   */
+  async _assertSufficientPrepaidFees(accountId) {
+    const [feeToken, feeAmount] = await Promise.all([
+      this.getFeeToken(),
+      this.getFeeAmount(),
+    ]);
+    if (feeAmount === 0n) return; // no fee configured
+
+    if (feeToken === ethers.ZeroAddress) return; // fee token not set
+
+    const balance = await this.getPrepaidFeeBalance(accountId, feeToken);
+    if (balance < feeAmount) {
+      throw new Error(
+        `Insufficient prepaid fee balance for anonymous account "${accountId}". ` +
+          `Required: ${feeAmount} (raw units of fee token ${feeToken}), ` +
+          `available: ${balance}. ` +
+          `Call depositFees(wallet, accountId, amount) to top up the prepaid fee reserve. ` +
+          `Use getFeeToken() to get the active fee token address and getFeeAmount() to see the required deposit amount per transfer.`,
+      );
+    }
+  }
+
+  // ─────────────────── prepaid fee actions ────────────────────────
+
+  /**
+   * Deposit tokens into the prepaid fee reserve for an anonymous account.
+   *
+   * Mirrors `deposit()` from a transaction-signing perspective: the user wallet pays
+   * gas and signs the raw EVM transaction. Fairycloak validates and broadcasts it.
+   *
+   * Steps:
+   *   1. Fetch the active fee token from the contract
+   *   2. ERC-20 approve if allowance is insufficient
+   *   3. Sign EIP-712 AnonymousAddFees authorisation payload
+   *   4. Build and sign the raw `addFees(...)` EVM transaction
+   *   5. Submit to Fairycloak `/v1/anonymous/fees/add/raw-tx`
+   *
+   * @param {ethers.Wallet} authWallet - Wallet that owns the tokens and pays gas
+   * @param {string} accountId - Target anonymous account ID
+   * @param {bigint|string|number} amount - Amount in raw ERC-20 units of the active fee token
+   * @param {Object} [options]
+   * @param {number}  [options.deadlineOffset=3600]
+   * @param {bigint}  [options.gasLimit=300000n]
+   * @returns {Promise<{request_id:string, tx_hash:string, status:string}>}
+   */
+  async depositFees(authWallet, accountId, amount, options = {}) {
+    const { deadlineOffset = DEFAULT_DEADLINE_OFFSET, gasLimit = 300000n } =
+      options;
+    try {
+      const amountBig = BigInt(amount);
+      if (amountBig <= 0n) throw new Error("Amount must be greater than 0");
+
+      const feeToken = await this.getFeeToken();
+      if (feeToken === ethers.ZeroAddress)
+        throw new Error(
+          "No fee token is currently configured on the contract. Contact the protocol operator.",
+        );
+
+      const depositorAddress = await authWallet.getAddress();
+      const walletWithProvider = authWallet.connect
+        ? authWallet.connect(this.provider)
+        : authWallet;
+
+      // 1. Approve if needed
+      const tokenContract = new ethers.Contract(
+        feeToken,
+        [
+          "function balanceOf(address) view returns (uint256)",
+          "function allowance(address,address) view returns (uint256)",
+          "function approve(address,uint256) returns (bool)",
+        ],
+        walletWithProvider,
+      );
+
+      const [balance, allowance] = await Promise.all([
+        tokenContract.balanceOf(depositorAddress),
+        tokenContract.allowance(depositorAddress, this.diamondAddress),
+      ]);
+
+      if (balance < amountBig)
+        throw new Error(
+          `Insufficient fee token balance. Required: ${amountBig}, available: ${balance}`,
+        );
+
+      if (allowance < amountBig) {
+        const approveTx = await tokenContract.approve(
+          this.diamondAddress,
+          ethers.MaxUint256,
+        );
+        const receipt = await approveTx.wait();
+        if (!receipt || receipt.status === 0)
+          throw new Error("Fee token approval failed");
+      }
+
+      // 2. EIP-712 AnonymousAddFees signature
+      const authNonce = await this.getAuthNonce(accountId);
+      const deadline = this._makeDeadline(deadlineOffset);
+
+      const domain = this._buildDomain();
+      const types = {
+        AnonymousAddFees: [
+          { name: "accountId", type: "string" },
+          { name: "token", type: "address" },
+          { name: "amount", type: "uint256" },
+          { name: "authNonce", type: "uint256" },
+          { name: "deadline", type: "uint256" },
+        ],
+      };
+      const value = {
+        accountId: String(accountId),
+        token: feeToken,
+        amount: amountBig,
+        authNonce,
+        deadline: BigInt(deadline),
+      };
+
+      const signature = await authWallet.signTypedData(domain, types, value);
+
+      // 3. Build and sign the raw addFees transaction
+      const calldata = ADD_FEES_INTERFACE.encodeFunctionData("addFees", [
+        accountId,
+        feeToken,
+        amountBig,
+        authNonce,
+        BigInt(deadline),
+        signature,
+      ]);
+
+      const [nonce, feeData] = await Promise.all([
+        this.provider.getTransactionCount(depositorAddress),
+        this.provider.getFeeData(),
+      ]);
+
+      let txObj;
+      if (feeData.maxFeePerGas) {
+        txObj = {
+          to: this.diamondAddress,
+          data: calldata,
+          nonce,
+          chainId: BigInt(this.chainId),
+          gasLimit,
+          maxFeePerGas: (feeData.maxFeePerGas * 12n) / 10n,
+          maxPriorityFeePerGas: feeData.maxPriorityFeePerGas ?? 0n,
+          value: 0n,
+        };
+      } else {
+        txObj = {
+          to: this.diamondAddress,
+          data: calldata,
+          nonce,
+          chainId: BigInt(this.chainId),
+          gasLimit,
+          gasPrice: (feeData.gasPrice * 11n) / 10n,
+          value: 0n,
+        };
+      }
+
+      const signedTx = await authWallet.signTransaction(txObj);
+
+      // 4. Submit to Fairycloak
+      return await this._fetch("POST", "/v1/anonymous/fees/add/raw-tx", {
+        raw_tx: signedTx,
+      });
+    } catch (e) {
+      const msg = e?.message ?? String(e);
+      if (
+        msg.startsWith("Fairycloak") ||
+        msg.startsWith("Insufficient") ||
+        msg.startsWith("No fee token")
+      )
+        throw e;
+      throw new Error(`Failed to deposit fees: ${msg}`);
+    }
+  }
+
+  /**
+   * Withdraw a specific amount from the prepaid fee reserve via Fairycloak. The relay pays gas.
+   *
+   * Use this to reclaim fees for a specific (possibly historical) fee token.
+   *
+   * @param {ethers.Wallet|ethers.Signer} authWallet - Authorised signer for the anonymous account
+   * @param {string} accountId
+   * @param {Object} params
+   * @param {string}              params.token       - Fee token address to withdraw
+   * @param {string}              params.destination - Destination EVM address
+   * @param {bigint|string|number} params.amount     - Amount in raw ERC-20 units
+   * @param {Object} [options]
+   * @param {number} [options.deadlineOffset=3600]
+   * @returns {Promise<{request_id:string, tx_hash:string, status:string}>}
+   */
+  async withdrawFees(
+    authWallet,
+    accountId,
+    { token, destination, amount },
+    options = {},
+  ) {
+    const { deadlineOffset = DEFAULT_DEADLINE_OFFSET } = options;
+    try {
+      if (!ethers.isAddress(token))
+        throw new Error(`Invalid token address: ${token}`);
+      if (!ethers.isAddress(destination))
+        throw new Error(`Invalid destination address: ${destination}`);
+      const amountBig = BigInt(amount);
+      if (amountBig <= 0n) throw new Error("Amount must be greater than 0");
+
+      const authNonce = await this.getAuthNonce(accountId);
+      const deadline = this._makeDeadline(deadlineOffset);
+
+      const domain = this._buildDomain();
+      const types = {
+        AnonymousWithdrawFees: [
+          { name: "accountId", type: "string" },
+          { name: "token", type: "address" },
+          { name: "destination", type: "address" },
+          { name: "amount", type: "uint256" },
+          { name: "authNonce", type: "uint256" },
+          { name: "deadline", type: "uint256" },
+        ],
+      };
+      const value = {
+        accountId: String(accountId),
+        token,
+        destination,
+        amount: amountBig,
+        authNonce,
+        deadline: BigInt(deadline),
+      };
+
+      const signature = await authWallet.signTypedData(domain, types, value);
+
+      return await this._fetch("POST", "/v1/anonymous/fees/withdraw", {
+        account_id: accountId,
+        token,
+        destination,
+        amount: String(amountBig),
+        auth_nonce: String(authNonce),
+        deadline: String(deadline),
+        signature,
+      });
+    } catch (e) {
+      const msg = e?.message ?? String(e);
+      if (msg.startsWith("Fairycloak") || msg.startsWith("Invalid")) throw e;
+      throw new Error(`Failed to withdraw fees: ${msg}`);
+    }
+  }
+
+  /**
+   * Withdraw all prepaid fee balances across all (including historical) fee tokens via Fairycloak.
+   * The relay pays gas.
+   *
+   * @param {ethers.Wallet|ethers.Signer} authWallet - Authorised signer for the anonymous account
+   * @param {string} accountId
+   * @param {Object} params
+   * @param {string} params.destination - Destination EVM address
+   * @param {Object} [options]
+   * @param {number} [options.deadlineOffset=3600]
+   * @returns {Promise<{request_id:string, tx_hash:string, status:string}>}
+   */
+  async withdrawAllFees(authWallet, accountId, { destination }, options = {}) {
+    const { deadlineOffset = DEFAULT_DEADLINE_OFFSET } = options;
+    try {
+      if (!ethers.isAddress(destination))
+        throw new Error(`Invalid destination address: ${destination}`);
+
+      const authNonce = await this.getAuthNonce(accountId);
+      const deadline = this._makeDeadline(deadlineOffset);
+
+      const domain = this._buildDomain();
+      const types = {
+        AnonymousWithdrawAllFees: [
+          { name: "accountId", type: "string" },
+          { name: "destination", type: "address" },
+          { name: "authNonce", type: "uint256" },
+          { name: "deadline", type: "uint256" },
+        ],
+      };
+      const value = {
+        accountId: String(accountId),
+        destination,
+        authNonce,
+        deadline: BigInt(deadline),
+      };
+
+      const signature = await authWallet.signTypedData(domain, types, value);
+
+      return await this._fetch("POST", "/v1/anonymous/fees/withdraw-all", {
+        account_id: accountId,
+        destination,
+        auth_nonce: String(authNonce),
+        deadline: String(deadline),
+        signature,
+      });
+    } catch (e) {
+      const msg = e?.message ?? String(e);
+      if (msg.startsWith("Fairycloak") || msg.startsWith("Invalid")) throw e;
+      throw new Error(`Failed to withdraw all fees: ${msg}`);
     }
   }
 

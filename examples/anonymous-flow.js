@@ -5,9 +5,10 @@
  *   [2] Derive ElGamal keypairs for both accounts
  *   [3] Create both anonymous accounts via Fairycloak
  *   [4] Deposit tokens into anon1
- *   [5] Transfer anon1 → anon2
- *   [6] Apply pending balance for anon2
- *   [7] Withdraw anon2 → public address
+ *   [5] Top up prepaid fees for anon1 (if balance < 0.1)
+ *   [6] Transfer anon1 → anon2
+ *   [7] Apply pending balance for anon2
+ *   [8] Withdraw anon2 → public address
  *
  * Run:
  *   node examples/anonymous-flow.js
@@ -31,7 +32,11 @@ const TOKEN_DECIMALS = Number(process.env.TOKEN_DECIMALS ?? "6");
 // Amounts in raw ERC-20 units (6 decimals — matches complete-flow.js)
 const DEPOSIT_AMOUNT = 100_000n; // 0.1  USDC
 const TRANSFER_AMOUNT = 50_000n; // 0.05 USDC
-const WITHDRAW_AMOUNT = 50_000n; // 0.025 USDC
+const WITHDRAW_AMOUNT = 50_000n; // 0.05 USDC
+
+// Prepaid fee thresholds (raw units, assumes fee token uses TOKEN_DECIMALS)
+const MIN_FEE_BALANCE = 1_000_000n; // 0.1  — deposit if balance falls below this
+const FEE_DEPOSIT_AMOUNT = 2_000_000n; // 0.5  — how much to top up in one shot
 
 // Anvil test accounts — override via .env
 const ANON1_PK =
@@ -221,9 +226,48 @@ async function main() {
     "anon1:post-deposit",
   );
 
-  // ── [5] Transfer anon1 → anon2 ───────────────────────────────────────────────
+  // ── [5] Top up prepaid fees for anon1 ───────────────────────────────────────
 
-  console.log("\n── [5] Transfer anon1 → anon2 ──────────────────────────");
+  console.log("\n── [5] Top up prepaid fees for anon1 ───────────────────");
+
+  const feeToken = await client.getFeeToken();
+  const feeAmount = await client.getFeeAmount();
+  log("  fee token  :", feeToken);
+  log("  fee/xfer   :", fmt(feeAmount, TOKEN_DECIMALS), "tokens");
+
+  const feeBalance = await client.getPrepaidFeeBalance(anon1Id, feeToken);
+  log("  fee balance:", fmt(feeBalance, TOKEN_DECIMALS), "tokens");
+
+  if (feeBalance < MIN_FEE_BALANCE) {
+    log(
+      `  balance < ${fmt(MIN_FEE_BALANCE, TOKEN_DECIMALS)}, depositing ${fmt(FEE_DEPOSIT_AMOUNT, TOKEN_DECIMALS)} fee tokens (anon1 pays gas) …`,
+    );
+    const fd = await client.depositFees(
+      anon1Wallet,
+      anon1Id,
+      FEE_DEPOSIT_AMOUNT,
+    );
+    log("  request_id:", fd.request_id, "  status:", fd.status);
+    if (fd.error) log("    [!] Error:", fd.error);
+    if (fd.tx_hash) log("  tx_hash   :", fd.tx_hash);
+
+    const fdFinal = await client.waitForRequest(fd.request_id, {
+      timeoutMs: 180_000,
+    });
+    log("  status    :", fdFinal.status, "  tx_hash:", fdFinal.tx_hash ?? "—");
+    if (fdFinal.error) log("    [!] Error:", fdFinal.error);
+
+    const newFeeBalance = await client.getPrepaidFeeBalance(anon1Id, feeToken);
+    log("  new fee balance:", fmt(newFeeBalance, TOKEN_DECIMALS), "tokens");
+  } else {
+    log(
+      `  fee balance sufficient (${fmt(feeBalance, TOKEN_DECIMALS)} ≥ ${fmt(MIN_FEE_BALANCE, TOKEN_DECIMALS)}), skipping deposit.`,
+    );
+  }
+
+  // ── [6] Transfer anon1 → anon2 ───────────────────────────────────────────────
+
+  console.log("\n── [6] Transfer anon1 → anon2 ──────────────────────────");
   log(`Transferring ${fmt(TRANSFER_AMOUNT, TOKEN_DECIMALS)} tokens …`);
 
   const txAnon = await client.transferToAnonymous(anon1Wallet, anon1Id, {
@@ -266,9 +310,9 @@ async function main() {
     "anon2:post-transfer",
   );
 
-  // ── [6] Apply pending for anon2 ──────────────────────────────────────────────
+  // ── [7] Apply pending for anon2 ──────────────────────────────────────────────
 
-  console.log("\n── [6] Apply pending balance for anon2 ─────────────────");
+  console.log("\n── [7] Apply pending balance for anon2 ─────────────────");
   log("Moving incoming credit from pending → available …");
 
   const ap = await client.applyPending(anon2Wallet, anon2Id);
@@ -292,9 +336,9 @@ async function main() {
     "anon2:post-apply",
   );
 
-  // ── [7] Withdraw anon2 → public address ──────────────────────────────────────
+  // ── [8] Withdraw anon2 → public address ──────────────────────────────────────
 
-  console.log("\n── [7] Withdraw from anon2 ─────────────────────────────");
+  console.log("\n── [8] Withdraw from anon2 ─────────────────────────────");
   log(
     `Withdrawing ${fmt(WITHDRAW_AMOUNT, TOKEN_DECIMALS)} tokens → ${withdrawDest} …`,
   );
