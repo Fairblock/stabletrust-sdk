@@ -14,7 +14,6 @@
  */
 
 import { ethers } from "ethers";
-import { randomUUID } from "crypto";
 import dotenv from "dotenv";
 import { AnonymousTransferClient } from "@fairblock/stabletrust";
 
@@ -30,9 +29,9 @@ const TOKEN_ADDRESS =
 const TOKEN_DECIMALS = Number(process.env.TOKEN_DECIMALS ?? "6");
 
 // Amounts in raw ERC-20 units (6 decimals — matches complete-flow.js)
-const DEPOSIT_AMOUNT  =  100_000n; // 0.1  USDC
-const TRANSFER_AMOUNT =   50_000n; // 0.05 USDC
-const WITHDRAW_AMOUNT =   25_000n; // 0.025 USDC
+const DEPOSIT_AMOUNT = 100_000n; // 0.1  USDC
+const TRANSFER_AMOUNT = 50_000n; // 0.05 USDC
+const WITHDRAW_AMOUNT = 50_000n; // 0.025 USDC
 
 // Anvil test accounts — override via .env
 const ANON1_PK =
@@ -121,8 +120,11 @@ async function main() {
 
   console.log("\n── [1] Generate anonymous account IDs ──────────────────");
 
-  const anon1Id = randomUUID();
-  const anon2Id = randomUUID();
+  // An auth signer can only ever be bound to a single anonymous account, so the
+  // account ID must be stable per-wallet across runs (random UUIDs would cause
+  // "auth signer already used" failures on every re-run with the same .env keys).
+  const anon1Id = `anon-${anon1Wallet.address.toLowerCase()}`;
+  const anon2Id = `anon-${anon2Wallet.address.toLowerCase()}`;
   log("anon1 id:", anon1Id);
   log("anon2 id:", anon2Id);
 
@@ -142,26 +144,25 @@ async function main() {
 
   console.log("\n── [3] Create anonymous accounts ───────────────────────");
 
-  log(`  creating anon1 (id=${anon1Id}) …`);
-  const cr1 = await client.createAccount(anon1Wallet, anon1Id, anon1Keys.publicKey);
-  log(`  request_id: ${cr1.request_id}  status: ${cr1.status}`);
-  if (cr1.error) log(`  [!] Error: ${cr1.error}`);
+  log(`  ensuring anon1 (id=${anon1Id}) …`);
+  const e1 = await client.ensureAnonymousAccount(
+    anon1Wallet,
+    anon1Id,
+    anon1Keys.publicKey,
+  );
+  log(
+    `  created=${e1.created}  exists=${e1.accountInfo.exists}  finalized=${e1.accountInfo.finalized}`,
+  );
 
-  log(`  creating anon2 (id=${anon2Id}) …`);
-  const cr2 = await client.createAccount(anon2Wallet, anon2Id, anon2Keys.publicKey);
-  log(`  request_id: ${cr2.request_id}  status: ${cr2.status}`);
-  if (cr2.error) log(`  [!] Error: ${cr2.error}`);
-
-  log("Waiting for Fairycloak to confirm account creations …");
-  const [r1, r2] = await Promise.all([
-    client.waitForRequest(cr1.request_id, { timeoutMs: 180_000 }),
-    client.waitForRequest(cr2.request_id, { timeoutMs: 180_000 }),
-  ]);
-  if (r1.error) log("  [!] create anon1 failed:", r1.error);
-  if (r2.error) log("  [!] create anon2 failed:", r2.error);
-
-  await waitForAccountReady(client, anon1Id, { label: "anon1" });
-  await waitForAccountReady(client, anon2Id, { label: "anon2" });
+  log(`  ensuring anon2 (id=${anon2Id}) …`);
+  const e2 = await client.ensureAnonymousAccount(
+    anon2Wallet,
+    anon2Id,
+    anon2Keys.publicKey,
+  );
+  log(
+    `  created=${e2.created}  exists=${e2.accountInfo.exists}  finalized=${e2.accountInfo.finalized}`,
+  );
 
   const [i1, i2] = await Promise.all([
     client.getAnonymousAccountInfo(anon1Id),
@@ -190,7 +191,9 @@ async function main() {
   // ── [4] Deposit ──────────────────────────────────────────────────────────────
 
   console.log("\n── [4] Deposit into anon1 ──────────────────────────────");
-  log(`Depositing ${fmt(DEPOSIT_AMOUNT, TOKEN_DECIMALS)} tokens into anon1 (anon1 pays gas) …`);
+  log(
+    `Depositing ${fmt(DEPOSIT_AMOUNT, TOKEN_DECIMALS)} tokens into anon1 (anon1 pays gas) …`,
+  );
 
   const dep = await client.deposit(
     anon1Wallet,
@@ -292,7 +295,9 @@ async function main() {
   // ── [7] Withdraw anon2 → public address ──────────────────────────────────────
 
   console.log("\n── [7] Withdraw from anon2 ─────────────────────────────");
-  log(`Withdrawing ${fmt(WITHDRAW_AMOUNT, TOKEN_DECIMALS)} tokens → ${withdrawDest} …`);
+  log(
+    `Withdrawing ${fmt(WITHDRAW_AMOUNT, TOKEN_DECIMALS)} tokens → ${withdrawDest} …`,
+  );
 
   const wd = await client.withdraw(anon2Wallet, anon2Id, {
     destination: withdrawDest,
@@ -327,9 +332,22 @@ async function main() {
   console.log("═══════════════════════════════════════════════════════");
   log("anon1 id   :", anon1Id);
   log("anon2 id   :", anon2Id);
-  log("Deposited  :", ethers.formatUnits(DEPOSIT_AMOUNT, TOKEN_DECIMALS), "tokens → anon1");
-  log("Transferred:", ethers.formatUnits(TRANSFER_AMOUNT, TOKEN_DECIMALS), "tokens → anon2");
-  log("Withdrawn  :", ethers.formatUnits(WITHDRAW_AMOUNT, TOKEN_DECIMALS), "tokens →", withdrawDest);
+  log(
+    "Deposited  :",
+    ethers.formatUnits(DEPOSIT_AMOUNT, TOKEN_DECIMALS),
+    "tokens → anon1",
+  );
+  log(
+    "Transferred:",
+    ethers.formatUnits(TRANSFER_AMOUNT, TOKEN_DECIMALS),
+    "tokens → anon2",
+  );
+  log(
+    "Withdrawn  :",
+    ethers.formatUnits(WITHDRAW_AMOUNT, TOKEN_DECIMALS),
+    "tokens →",
+    withdrawDest,
+  );
 }
 
 main().catch((err) => {

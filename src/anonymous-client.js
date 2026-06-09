@@ -123,22 +123,21 @@ export class AnonymousTransferClient {
   }
 
   /**
-   * Resolve a pubkey-or-wallet to an uncompressed 65-byte hex pubkey (0x04...).
-   * Accepts: ethers.Wallet, ethers.SigningKey, or a hex pubkey string.
+   * Resolve a wallet/address/pubkey to a checksummed EVM address.
+   * Accepts: ethers.Wallet/Signer, an address string, or an uncompressed hex pubkey string.
    * @private
    */
-  _resolvePubkey(walletOrPubkey) {
-    if (typeof walletOrPubkey === "string") {
-      return walletOrPubkey; // already a hex pubkey
+  async _resolveSignerAddress(walletOrAddress) {
+    if (typeof walletOrAddress === "string") {
+      if (ethers.isAddress(walletOrAddress))
+        return ethers.getAddress(walletOrAddress);
+      return ethers.computeAddress(walletOrAddress); // hex pubkey → address
     }
-    if (walletOrPubkey.signingKey) {
-      return walletOrPubkey.signingKey.publicKey; // ethers.Wallet → uncompressed pubkey
-    }
-    if (walletOrPubkey.publicKey) {
-      return walletOrPubkey.publicKey; // ethers.SigningKey
+    if (typeof walletOrAddress.getAddress === "function") {
+      return await walletOrAddress.getAddress();
     }
     throw new Error(
-      "Expected an ethers.Wallet or uncompressed hex public-key string",
+      "Expected an ethers.Wallet/Signer, an address string, or an uncompressed hex public-key string",
     );
   }
 
@@ -515,7 +514,6 @@ export class AnonymousTransferClient {
     const { deadlineOffset = DEFAULT_DEADLINE_OFFSET } = options;
     try {
       const authAddress = await authWallet.getAddress();
-      const authPubkey = this._resolvePubkey(authWallet); // uncompressed 65-byte pubkey
 
       // Normalise elgamal key to hex
       const elgamalHex = elgamalPublicKey.startsWith("0x")
@@ -557,7 +555,7 @@ export class AnonymousTransferClient {
       return await this._fetch("POST", "/v1/anonymous/accounts", {
         account_id: accountId,
         elgamal_pubkey: elgamalHex,
-        auth_pubkeys: [authPubkey],
+        auth_signers: [authAddress],
         client_request_id: clientRequestId,
         deadline: String(deadline),
         signature,
@@ -570,13 +568,105 @@ export class AnonymousTransferClient {
   }
 
   /**
+   * Create an anonymous account if it doesn't already exist, and (optionally) wait
+   * until it has settled (no pending CW→EVM action) before returning.
+   *
+   * Looks the account up by `accountId` first — if it already exists on-chain this
+   * skips account creation entirely (idempotent re-runs with a stable `accountId`).
+   * Note that an auth signer can only ever be bound to a single anonymous account,
+   * so reusing a wallet across different `accountId`s will still fail at creation time.
+   *
+   * @param {ethers.Wallet|ethers.Signer} authWallet - Initial auth signer
+   * @param {string} accountId - Caller-chosen account ID (non-empty string, case-sensitive)
+   * @param {string} elgamalPublicKey - ElGamal public key as base64 or "0x"-prefixed hex (32 bytes)
+   * @param {Object} [options]
+   * @param {number} [options.deadlineOffset=3600] - Deadline in seconds from now
+   * @param {boolean} [options.waitUntilReady=true] - Poll until `hasPendingAction` is false
+   * @param {number} [options.timeoutMs=180000] - Max time to wait for creation/readiness
+   * @param {number} [options.pollIntervalMs=2000]
+   * @returns {Promise<{accountId:string, accountInfo:Object, created:boolean}>}
+   */
+  async ensureAnonymousAccount(authWallet, accountId, elgamalPublicKey, options = {}) {
+    const {
+      deadlineOffset = DEFAULT_DEADLINE_OFFSET,
+      waitUntilReady = true,
+      timeoutMs = 180_000,
+      pollIntervalMs = 2000,
+    } = options;
+
+    const cutoff = Date.now() + timeoutMs;
+    const waitForReady = async () => {
+      let info = await this.getAnonymousAccountInfo(accountId);
+      while (waitUntilReady && info.hasPendingAction) {
+        if (Date.now() > cutoff) {
+          throw new Error(
+            `Timeout waiting for anonymous account ${accountId} to become ready`,
+          );
+        }
+        await new Promise((r) => setTimeout(r, pollIntervalMs));
+        info = await this.getAnonymousAccountInfo(accountId);
+      }
+      return info;
+    };
+
+    let accountInfo = await this.getAnonymousAccountInfo(accountId);
+    if (accountInfo.exists) {
+      accountInfo = await waitForReady();
+      return { accountId, accountInfo, created: false };
+    }
+
+    const failIfAlreadyUsed = async (err) => {
+      if (typeof err === "string" && err.includes("already used")) {
+        const address = await authWallet.getAddress();
+        throw new Error(
+          `Signer ${address} is already bound to a different anonymous account, ` +
+            `but no account exists with accountId "${accountId}". ` +
+            `The provided accountId is likely incorrect — each auth signer can only ` +
+            `ever be registered to a single anonymous account.`,
+        );
+      }
+    };
+
+    const created = await this.createAccount(authWallet, accountId, elgamalPublicKey, {
+      deadlineOffset,
+    });
+    if (created.status === "failed" || created.error) {
+      await failIfAlreadyUsed(created.error);
+      throw new Error(
+        `Failed to create anonymous account ${accountId}: ${created.error ?? "request failed"}`,
+      );
+    }
+
+    const finalRequest = await this.waitForRequest(created.request_id, { timeoutMs });
+    if (finalRequest.status === "failed" || finalRequest.error) {
+      await failIfAlreadyUsed(finalRequest.error);
+      throw new Error(
+        `Failed to create anonymous account ${accountId}: ${finalRequest.error ?? "request failed"}`,
+      );
+    }
+
+    while (!accountInfo.exists) {
+      if (Date.now() > cutoff) {
+        throw new Error(
+          `Timeout waiting for anonymous account ${accountId} to be created`,
+        );
+      }
+      await new Promise((r) => setTimeout(r, pollIntervalMs));
+      accountInfo = await this.getAnonymousAccountInfo(accountId);
+    }
+
+    accountInfo = await waitForReady();
+    return { accountId, accountInfo, created: true };
+  }
+
+  /**
    * Update the set of authorised signers for an anonymous account via Fairycloak.
    *
    * @param {ethers.Wallet|ethers.Signer} authWallet - A currently authorised signer
    * @param {string} accountId
    * @param {Object} keys
-   * @param {Array<string|ethers.Wallet>} [keys.add=[]]    - Pubkeys/wallets to add
-   * @param {Array<string|ethers.Wallet>} [keys.remove=[]] - Pubkeys/wallets to remove
+   * @param {Array<string|ethers.Wallet|ethers.Signer>} [keys.add=[]]    - Addresses/wallets/pubkeys to add
+   * @param {Array<string|ethers.Wallet|ethers.Signer>} [keys.remove=[]] - Addresses/wallets/pubkeys to remove
    * @param {Object} [options]
    * @param {number} [options.deadlineOffset=3600]
    * @returns {Promise<{request_id:string, tx_hash:string, status:string}>}
@@ -592,13 +682,11 @@ export class AnonymousTransferClient {
       const authNonce = await this.getAuthNonce(accountId);
       const deadline = this._makeDeadline(deadlineOffset);
 
-      const addPubkeys = add.map((w) => this._resolvePubkey(w));
-      const removePubkeys = remove.map((w) => this._resolvePubkey(w));
-
-      // EIP-712 signs over address arrays, not raw pubkeys
-      const addAddresses = addPubkeys.map((pk) => ethers.computeAddress(pk));
-      const removeAddresses = removePubkeys.map((pk) =>
-        ethers.computeAddress(pk),
+      const addAddresses = await Promise.all(
+        add.map((w) => this._resolveSignerAddress(w)),
+      );
+      const removeAddresses = await Promise.all(
+        remove.map((w) => this._resolveSignerAddress(w)),
       );
 
       const addSignersHash = ethers.keccak256(
@@ -633,8 +721,8 @@ export class AnonymousTransferClient {
 
       return await this._fetch("POST", "/v1/anonymous/keys/update", {
         account_id: accountId,
-        add_pubkeys: addPubkeys,
-        remove_pubkeys: removePubkeys,
+        add_signers: addAddresses,
+        remove_signers: removeAddresses,
         auth_nonce: String(authNonce),
         deadline: String(deadline),
         signature,
