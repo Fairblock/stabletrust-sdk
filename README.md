@@ -240,6 +240,23 @@ const keys = await client.deriveAnonymousKeys(authWallet, accountId);
 
 Creates a new anonymous account via the relay. The relay pays gas. `accountId` is a **caller-chosen string** (non-empty, case-sensitive) — pick any unique identifier you like (e.g. a UUID or a human-readable name).
 
+#### `ensureAnonymousAccount(authWallet, accountId, elgamalPublicKey, options?)`
+
+Idempotent helper that creates the anonymous account if it doesn't already exist, and (by default) waits until it has settled (no pending CW→EVM action) before returning. If an account with `accountId` already exists on-chain, account creation is skipped entirely — safe to call on every run with a stable `accountId`.
+
+> Note: an auth signer can only ever be bound to a single anonymous account, so reusing a wallet across different `accountId`s will fail at creation time even via `ensureAnonymousAccount`.
+
+```javascript
+const { accountId, accountInfo, created } = await client.ensureAnonymousAccount(
+  wallet,
+  accountId,
+  keys.publicKey,
+);
+```
+
+- **Options**: `deadlineOffset` (default `3600`), `waitUntilReady` (default `true`), `timeoutMs` (default `180000`), `pollIntervalMs` (default `2000`)
+- **Returns**: `{ accountId, accountInfo, created }`
+
 #### `updateAuthKeys(authWallet, accountId, { add, remove }, options?)`
 
 Adds or removes authorised signers for an anonymous account. Pass `ethers.Wallet` instances or raw uncompressed hex pubkey strings.
@@ -339,6 +356,49 @@ const result = await client.withdraw(wallet, accountId, {
 });
 ```
 
+### Prepaid Fees
+
+Every `transferToPublic` and `transferToAnonymous` call deducts a protocol fee from the sender account's **prepaid fee reserve**. The SDK checks this balance before submitting a transfer and throws a descriptive error if it's insufficient — top up the reserve with `depositFees` before transferring.
+
+#### `getFeeToken()`
+
+Returns the currently configured ERC-20 fee token address (checksummed). `depositFees` deposits must use this token. The fee token can be rotated by the protocol over time, but existing balances in old fee tokens remain withdrawable.
+
+#### `getFeeAmount()`
+
+Returns the protocol fee amount (in raw ERC-20 units of the fee token) deducted from the prepaid reserve on each anonymous transfer. Returns `0n` if no fee is configured.
+
+#### `getPrepaidFeeBalance(accountId, token)`
+
+Returns the prepaid fee balance (in raw ERC-20 units) for an anonymous account and a given fee token.
+
+#### `depositFees(authWallet, accountId, amount, options?)`
+
+Deposits tokens into the prepaid fee reserve for an anonymous account. **The user pays gas** for this operation (mirrors `deposit()`). Handles ERC-20 approval against the active fee token automatically.
+
+```javascript
+const feeToken = await client.getFeeToken();
+const feeAmount = await client.getFeeAmount();
+const feeBalance = await client.getPrepaidFeeBalance(accountId, feeToken);
+
+if (feeBalance < feeAmount) {
+  const result = await client.depositFees(
+    wallet,
+    accountId,
+    ethers.parseUnits("0.5", tokenDecimals),
+  );
+  await client.waitForRequest(result.request_id);
+}
+```
+
+#### `withdrawFees(authWallet, accountId, { token, destination, amount }, options?)`
+
+Withdraws a specific amount from the prepaid fee reserve for a given fee token. The relay pays gas. Use this to reclaim fees from a specific (possibly historical) fee token.
+
+#### `withdrawAllFees(authWallet, accountId, { destination }, options?)`
+
+Withdraws all prepaid fee balances across all (including historical) fee tokens to `destination`. The relay pays gas.
+
 #### Request Tracking
 
 All relay operations return a `{ request_id, tx_hash, status }` object. Use the following to track completion:
@@ -419,10 +479,10 @@ const wallet = new ethers.Wallet(process.env.PRIVATE_KEY);
 const tokenAddress = "0xYourTokenAddress";
 const tokenDecimals = 6;
 
-// 1. Choose a unique account ID, derive keys, then create the account
+// 1. Choose a unique account ID, derive keys, then ensure the account exists
 const accountId = "my-unique-account-id"; // any non-empty string you choose
 const keys = await client.deriveAnonymousKeys(wallet, accountId);
-await client.createAccount(wallet, accountId, keys.publicKey);
+await client.ensureAnonymousAccount(wallet, accountId, keys.publicKey);
 
 // 2. Deposit (user pays gas)
 const depositResult = await client.deposit(
@@ -441,7 +501,21 @@ const balance = await client.getBalance(
 );
 console.log("Available:", balance.available, "Pending:", balance.pending);
 
-// 4. Transfer to a public address (relay pays gas)
+// 4. Top up the prepaid fee reserve if needed (user pays gas)
+// transferToPublic/transferToAnonymous deduct a protocol fee from this reserve.
+const feeToken = await client.getFeeToken();
+const feeAmount = await client.getFeeAmount();
+const feeBalance = await client.getPrepaidFeeBalance(accountId, feeToken);
+if (feeBalance < feeAmount) {
+  const feeResult = await client.depositFees(
+    wallet,
+    accountId,
+    ethers.parseUnits("0.5", tokenDecimals),
+  );
+  await client.waitForRequest(feeResult.request_id);
+}
+
+// 5. Transfer to a public address (relay pays gas)
 const transferResult = await client.transferToPublic(wallet, accountId, {
   recipient: "0xRecipientAddress",
   token: tokenAddress,
@@ -450,7 +524,7 @@ const transferResult = await client.transferToPublic(wallet, accountId, {
 });
 await client.waitForRequest(transferResult.request_id);
 
-// 5. Withdraw (relay pays gas)
+// 6. Withdraw (relay pays gas)
 const withdrawResult = await client.withdraw(wallet, accountId, {
   destination: wallet.address,
   token: tokenAddress,
@@ -494,6 +568,7 @@ try {
 | "Account finalization timeout" | Account creation is still processing                    | Wait a few minutes and retry                            |
 | "Proof generation failed"      | Invalid inputs or cryptographic operation error         | Verify all parameters and ensure sufficient balance     |
 | "Amount too small"             | Amount rounds to 0 in contract scale                    | Use a larger amount (minimum depends on token decimals) |
+| "Insufficient prepaid fee balance" | Anonymous account's prepaid fee reserve is below the per-transfer fee | Call `depositFees(wallet, accountId, amount)` to top up; use `getFeeToken()`/`getFeeAmount()` to check requirements |
 | Fairycloak HTTP error          | Relay unreachable or request rejected                   | Check the relay URL, API key, and account authorization |
 
 ---

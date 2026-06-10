@@ -32,7 +32,7 @@ const TOKEN_DECIMALS = Number(process.env.TOKEN_DECIMALS ?? "6");
 // Amounts in raw ERC-20 units (6 decimals — matches complete-flow.js)
 const DEPOSIT_AMOUNT = 100_000n; // 0.1  USDC
 const TRANSFER_AMOUNT = 50_000n; // 0.05 USDC
-const WITHDRAW_AMOUNT = 50_000n; // 0.05 USDC
+const WITHDRAW_AMOUNT = 20_000n; // 0.02 USDC
 
 // Prepaid fee thresholds (raw units, assumes fee token uses TOKEN_DECIMALS)
 const MIN_FEE_BALANCE = 1_000_000n; // 0.1  — deposit if balance falls below this
