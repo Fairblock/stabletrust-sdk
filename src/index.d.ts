@@ -169,6 +169,16 @@ declare module "@fairblock/stabletrust" {
    *
    * All operations (except `deposit`) are gas-free for the user — Fairycloak pays gas.
    * `deposit` requires the user to sign and pay for a raw EVM transaction.
+   *
+   * ### Anonymous account ID rules
+   * Every `accountId` / `senderAccountId` / `recipientId` passed to this client must:
+   * - be a non-empty string
+   * - be at most {@link MAX_ANONYMOUS_ACCOUNT_ID_LENGTH} (20) characters
+   * - contain only alphanumeric characters (A-Z, a-z, 0-9)
+   * - be treated as case-sensitive (no normalization is applied)
+   *
+   * IDs that violate these rules are rejected with a descriptive error before any
+   * network request is made. See `validateAnonymousAccountId`.
    */
   export class AnonymousTransferClient {
     constructor(config: AnonymousTransferClientConfig);
@@ -312,7 +322,8 @@ declare module "@fairblock/stabletrust" {
 
     /**
      * Create a new anonymous account. The relay pays gas.
-     * @param accountId Caller-chosen account ID (non-empty string, case-sensitive)
+     * @param accountId Caller-chosen account ID. Must be a non-empty, case-sensitive,
+     *   alphanumeric string of at most {@link MAX_ANONYMOUS_ACCOUNT_ID_LENGTH} (20) characters.
      * @param elgamalPublicKey Base64 or "0x"-prefixed hex (32 bytes)
      */
     createAccount(
@@ -636,6 +647,27 @@ declare module "@fairblock/stabletrust" {
    * Encode a withdraw proof for contract submission
    */
   export function encodeWithdrawProof(proof: any): string;
+
+  /**
+   * Maximum allowed length for an anonymous account ID (20 characters).
+   */
+  export const MAX_ANONYMOUS_ACCOUNT_ID_LENGTH: number;
+
+  /**
+   * Validate an anonymous account ID.
+   *
+   * Rules (must match the Fairycloak relay and on-chain contract):
+   * - Non-empty string
+   * - At most {@link MAX_ANONYMOUS_ACCOUNT_ID_LENGTH} (20) characters
+   * - Alphanumeric characters only (A-Z, a-z, 0-9)
+   * - Case-sensitive (no normalization is applied)
+   *
+   * @throws {Error} If `accountId` violates any of the above rules.
+   */
+  export function validateAnonymousAccountId(
+    accountId: string,
+    fieldName?: string,
+  ): void;
 
   /**
    * Constants

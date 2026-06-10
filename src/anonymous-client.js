@@ -1,6 +1,10 @@
 import { ethers } from "ethers";
 import { initializeWasm } from "./wasm-loader.js";
-import { encodeTransferProof, encodeWithdrawProof } from "./utils.js";
+import {
+  encodeTransferProof,
+  encodeWithdrawProof,
+  validateAnonymousAccountId,
+} from "./utils.js";
 import { getStabletrustContractAddress } from "./constants.js";
 
 // EIP-712 domain for anonymous operations (LibAnonAuth domain name)
@@ -38,6 +42,16 @@ function _parseBigInt(v) {
  * Anonymous transfers are routed through the Fairycloak HTTP relay server instead of being
  * submitted directly on-chain. The relay pays gas for all managed transactions; the user only
  * signs EIP-712 authorisation payloads (and a raw EVM transaction for deposits).
+ *
+ * ### Anonymous account ID rules
+ * Every `accountId` / `senderAccountId` / `recipientId` accepted by this client must:
+ *   - be a non-empty string
+ *   - be at most 20 characters long
+ *   - contain only alphanumeric characters (A-Z, a-z, 0-9)
+ *   - be treated as case-sensitive (no normalization is applied)
+ *
+ * IDs that don't follow these rules are rejected with a descriptive error before any
+ * network request is made.
  */
 export class AnonymousTransferClient {
   /**
@@ -191,6 +205,7 @@ export class AnonymousTransferClient {
    * @returns {Promise<{exists:boolean, finalized:boolean, hasPendingAction:boolean, txId:bigint, elgamalPubkey:string, authNonce:bigint}>}
    */
   async getAnonymousAccountInfo(accountId) {
+    validateAnonymousAccountId(accountId, "accountId");
     try {
       const data = await this._fetch(
         "GET",
@@ -234,6 +249,7 @@ export class AnonymousTransferClient {
    * @returns {Promise<boolean>}
    */
   async isAuthorizedSigner(accountId, signerAddress) {
+    validateAnonymousAccountId(accountId, "accountId");
     const data = await this._fetch(
       "GET",
       `/v1/views/anonymous/accounts/${accountId}/authorized-signers/${signerAddress}`,
@@ -312,6 +328,7 @@ export class AnonymousTransferClient {
    * @returns {Promise<{available: {amount: number, ciphertext: string|null}, pending: {amount: number, ciphertext: string|null}}>}
    */
   async getAnonymousBalance(accountId, tokenAddress, elGamalPrivateKey) {
+    validateAnonymousAccountId(accountId, "accountId");
     if (!ethers.isAddress(tokenAddress))
       throw new Error(`Invalid token address: ${tokenAddress}`);
     if (!elGamalPrivateKey) throw new Error("elGamalPrivateKey is required");
@@ -347,6 +364,7 @@ export class AnonymousTransferClient {
    * @returns {Promise<{publicKey:string, privateKey:string}>} Base-64 encoded keypair
    */
   async deriveAnonymousKeys(authWallet, accountId) {
+    validateAnonymousAccountId(accountId, "accountId");
     try {
       const wasm = await this._getWasm();
       const address = await authWallet.getAddress();
@@ -508,13 +526,16 @@ export class AnonymousTransferClient {
    * The relay submits the `createAnonymousAccount` transaction and pays gas.
    *
    * @param {ethers.Wallet|ethers.Signer} authWallet - Initial auth signer
-   * @param {string} accountId - Caller-chosen account ID (non-empty string, case-sensitive)
+   * @param {string} accountId - Caller-chosen account ID. Must be a non-empty, case-sensitive,
+   *   alphanumeric string of at most 20 characters.
    * @param {string} elgamalPublicKey - ElGamal public key as base64 or "0x"-prefixed hex (32 bytes)
    * @param {Object} [options]
    * @param {number} [options.deadlineOffset=3600] - Deadline in seconds from now
    * @returns {Promise<{request_id:string, tx_hash:string, status:string, action:string}>}
+   * @throws {Error} If `accountId` doesn't follow the anonymous account ID rules (see class docs).
    */
   async createAccount(authWallet, accountId, elgamalPublicKey, options = {}) {
+    validateAnonymousAccountId(accountId, "accountId");
     const { deadlineOffset = DEFAULT_DEADLINE_OFFSET } = options;
     try {
       const authAddress = await authWallet.getAddress();
@@ -581,7 +602,8 @@ export class AnonymousTransferClient {
    * so reusing a wallet across different `accountId`s will still fail at creation time.
    *
    * @param {ethers.Wallet|ethers.Signer} authWallet - Initial auth signer
-   * @param {string} accountId - Caller-chosen account ID (non-empty string, case-sensitive)
+   * @param {string} accountId - Caller-chosen account ID. Must be a non-empty, case-sensitive,
+   *   alphanumeric string of at most 20 characters.
    * @param {string} elgamalPublicKey - ElGamal public key as base64 or "0x"-prefixed hex (32 bytes)
    * @param {Object} [options]
    * @param {number} [options.deadlineOffset=3600] - Deadline in seconds from now
@@ -589,8 +611,10 @@ export class AnonymousTransferClient {
    * @param {number} [options.timeoutMs=180000] - Max time to wait for creation/readiness
    * @param {number} [options.pollIntervalMs=2000]
    * @returns {Promise<{accountId:string, accountInfo:Object, created:boolean}>}
+   * @throws {Error} If `accountId` doesn't follow the anonymous account ID rules (see class docs).
    */
   async ensureAnonymousAccount(authWallet, accountId, elgamalPublicKey, options = {}) {
+    validateAnonymousAccountId(accountId, "accountId");
     const {
       deadlineOffset = DEFAULT_DEADLINE_OFFSET,
       waitUntilReady = true,
@@ -681,6 +705,7 @@ export class AnonymousTransferClient {
     { add = [], remove = [] } = {},
     options = {},
   ) {
+    validateAnonymousAccountId(accountId, "accountId");
     const { deadlineOffset = DEFAULT_DEADLINE_OFFSET } = options;
     try {
       const authNonce = await this.getAuthNonce(accountId);
@@ -760,6 +785,7 @@ export class AnonymousTransferClient {
    * @returns {Promise<{request_id:string, tx_hash:string, status:string}>}
    */
   async deposit(authWallet, accountId, tokenAddress, amount, options = {}) {
+    validateAnonymousAccountId(accountId, "accountId");
     const { deadlineOffset = DEFAULT_DEADLINE_OFFSET, gasLimit = 600000n } =
       options;
     try {
@@ -933,6 +959,7 @@ export class AnonymousTransferClient {
     },
     options = {},
   ) {
+    validateAnonymousAccountId(accountId, "accountId");
     const { deadlineOffset = DEFAULT_DEADLINE_OFFSET } = options;
     try {
       if (!ethers.isAddress(recipient))
@@ -1069,6 +1096,8 @@ export class AnonymousTransferClient {
     },
     options = {},
   ) {
+    validateAnonymousAccountId(senderAccountId, "senderAccountId");
+    validateAnonymousAccountId(recipientId, "recipientId");
     const { deadlineOffset = DEFAULT_DEADLINE_OFFSET } = options;
     try {
       if (!ethers.isAddress(token))
@@ -1181,6 +1210,7 @@ export class AnonymousTransferClient {
    * @returns {Promise<{request_id:string, tx_hash:string, status:string}>}
    */
   async applyPending(authWallet, accountId, options = {}) {
+    validateAnonymousAccountId(accountId, "accountId");
     const { deadlineOffset = DEFAULT_DEADLINE_OFFSET } = options;
     try {
       const authNonce = await this.getAuthNonce(accountId);
@@ -1248,6 +1278,7 @@ export class AnonymousTransferClient {
     },
     options = {},
   ) {
+    validateAnonymousAccountId(accountId, "accountId");
     const { deadlineOffset = DEFAULT_DEADLINE_OFFSET } = options;
     try {
       if (!ethers.isAddress(destination))
@@ -1357,6 +1388,7 @@ export class AnonymousTransferClient {
    * @returns {Promise<{ amount: number, available: number, pending: number }>}
    */
   async getBalance(accountId, tokenAddress, elGamalPrivateKey) {
+    validateAnonymousAccountId(accountId, "accountId");
     try {
       if (!ethers.isAddress(tokenAddress)) {
         throw new Error(`Invalid token address: ${tokenAddress}`);
@@ -1430,6 +1462,7 @@ export class AnonymousTransferClient {
    * @returns {Promise<bigint>}
    */
   async getPrepaidFeeBalance(accountId, token) {
+    validateAnonymousAccountId(accountId, "accountId");
     try {
       if (!ethers.isAddress(token))
         throw new Error(`Invalid token address: ${token}`);
@@ -1493,6 +1526,7 @@ export class AnonymousTransferClient {
    * @returns {Promise<{request_id:string, tx_hash:string, status:string}>}
    */
   async depositFees(authWallet, accountId, amount, options = {}) {
+    validateAnonymousAccountId(accountId, "accountId");
     const { deadlineOffset = DEFAULT_DEADLINE_OFFSET, gasLimit = 300000n } =
       options;
     try {
@@ -1643,6 +1677,7 @@ export class AnonymousTransferClient {
     { token, destination, amount },
     options = {},
   ) {
+    validateAnonymousAccountId(accountId, "accountId");
     const { deadlineOffset = DEFAULT_DEADLINE_OFFSET } = options;
     try {
       if (!ethers.isAddress(token))
@@ -1706,6 +1741,7 @@ export class AnonymousTransferClient {
    * @returns {Promise<{request_id:string, tx_hash:string, status:string}>}
    */
   async withdrawAllFees(authWallet, accountId, { destination }, options = {}) {
+    validateAnonymousAccountId(accountId, "accountId");
     const { deadlineOffset = DEFAULT_DEADLINE_OFFSET } = options;
     try {
       if (!ethers.isAddress(destination))

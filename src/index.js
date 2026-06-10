@@ -1,7 +1,12 @@
 export { ConfidentialTransferClient } from "./confidential-client.js";
 export { AnonymousTransferClient } from "./anonymous-client.js";
 export { deriveKeys, decryptCiphertext, combineCiphertext } from "./crypto.js";
-export { encodeTransferProof, encodeWithdrawProof } from "./utils.js";
+export {
+  encodeTransferProof,
+  encodeWithdrawProof,
+  validateAnonymousAccountId,
+  MAX_ANONYMOUS_ACCOUNT_ID_LENGTH,
+} from "./utils.js";
 export {
   CONTRACT_ABI,
   ERC20_ABI,

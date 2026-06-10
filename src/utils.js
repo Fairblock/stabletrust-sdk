@@ -3,6 +3,40 @@ import { ethers } from "ethers";
 // Docs: https://docs.pinata.cloud
 const PINATA_UPLOAD_URL = "https://uploads.pinata.cloud/v3/files";
 const PINATA_JWT = process.env.PINATA_JWT;
+
+// Anonymous account ID constraints (must match the Fairycloak relay and on-chain contract rules)
+export const MAX_ANONYMOUS_ACCOUNT_ID_LENGTH = 20;
+const ANONYMOUS_ACCOUNT_ID_REGEX = /^[A-Za-z0-9]+$/;
+
+/**
+ * Validate an anonymous account ID against the rules enforced by the Fairycloak
+ * relay and the on-chain contract:
+ *  - non-empty
+ *  - at most 20 characters
+ *  - alphanumeric characters only (A-Z, a-z, 0-9)
+ *  - case-sensitive (no normalization is applied)
+ *
+ * @param {string} accountId - The anonymous account ID to validate.
+ * @param {string} [fieldName="accountId"] - Name of the field, used in error messages.
+ * @throws {Error} If the account ID violates any of the above rules.
+ */
+export function validateAnonymousAccountId(accountId, fieldName = "accountId") {
+  const RULES =
+    `${fieldName} must be a non-empty string of at most ${MAX_ANONYMOUS_ACCOUNT_ID_LENGTH} characters, ` +
+    `containing only alphanumeric characters (A-Z, a-z, 0-9). IDs are case-sensitive.`;
+
+  if (typeof accountId !== "string" || accountId.length === 0) {
+    throw new Error(`Invalid ${fieldName}: ${RULES}`);
+  }
+  if (accountId.length > MAX_ANONYMOUS_ACCOUNT_ID_LENGTH) {
+    throw new Error(
+      `Invalid ${fieldName} "${accountId}": exceeds ${MAX_ANONYMOUS_ACCOUNT_ID_LENGTH} characters (got ${accountId.length}). ${RULES}`,
+    );
+  }
+  if (!ANONYMOUS_ACCOUNT_ID_REGEX.test(accountId)) {
+    throw new Error(`Invalid ${fieldName} "${accountId}": contains non-alphanumeric characters. ${RULES}`);
+  }
+}
 /**
  * Encodes the ZK-Proof data for a transfer into a format the Solidity contract expects.
  *

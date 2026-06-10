@@ -212,6 +212,17 @@ The `AnonymousTransferClient` routes all operations through the **Fairycloak rel
 
 > **Access Required** — Anonymous transfers are available to teams building privacy-critical applications. To obtain a Fairycloak relay URL and API key, reach out to the Fairblock team at [hello@fairblock.network](mailto:hello@fairblock.network).
 
+### Anonymous Account ID Rules
+
+Every `accountId` (and `senderAccountId` / `recipientId`) you pass to `AnonymousTransferClient` must follow these rules, enforced both on-chain and by the Fairycloak relay:
+
+- **Non-empty** string
+- **At most 20 characters** long
+- **Alphanumeric characters only** (`A-Z`, `a-z`, `0-9`) — no spaces, punctuation, or Unicode
+- **Case-sensitive** — `"MyAccount"` and `"myaccount"` are different accounts; no normalization is applied
+
+The SDK validates `accountId` (and related fields) before making any request and throws a descriptive `Error` if it doesn't follow these rules.
+
 ### Initialization
 
 ```javascript
@@ -238,7 +249,7 @@ const keys = await client.deriveAnonymousKeys(authWallet, accountId);
 
 #### `createAccount(authWallet, accountId, elgamalPublicKey, options?)`
 
-Creates a new anonymous account via the relay. The relay pays gas. `accountId` is a **caller-chosen string** (non-empty, case-sensitive) — pick any unique identifier you like (e.g. a UUID or a human-readable name).
+Creates a new anonymous account via the relay. The relay pays gas. `accountId` is a **caller-chosen string** — pick any unique identifier you like (e.g. a short UUID fragment or a human-readable name), as long as it follows the [Anonymous Account ID Rules](#anonymous-account-id-rules) above (non-empty, at most 20 characters, alphanumeric only, case-sensitive).
 
 #### `ensureAnonymousAccount(authWallet, accountId, elgamalPublicKey, options?)`
 

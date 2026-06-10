@@ -128,8 +128,9 @@ async function main() {
   // An auth signer can only ever be bound to a single anonymous account, so the
   // account ID must be stable per-wallet across runs (random UUIDs would cause
   // "auth signer already used" failures on every re-run with the same .env keys).
-  const anon1Id = `anon-${anon1Wallet.address.toLowerCase()}`;
-  const anon2Id = `anon-${anon2Wallet.address.toLowerCase()}`;
+  // Anonymous account IDs must be alphanumeric and at most 20 characters.
+  const anon1Id = `anon${anon1Wallet.address.slice(2, 6).toLowerCase()}`;
+  const anon2Id = `anon${anon2Wallet.address.slice(2, 6).toLowerCase()}`;
   log("anon1 id:", anon1Id);
   log("anon2 id:", anon2Id);
 
