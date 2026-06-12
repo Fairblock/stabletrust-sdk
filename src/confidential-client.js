@@ -841,52 +841,6 @@ export class ConfidentialTransferClient {
   }
 
   /**
-   * Wait for pending balance to appear
-   *
-   * @param {string} address - Account address
-   * @param {string} privateKey - Private key for decryption
-   * @param {string} tokenAddress - Token address
-   * @param {Object} [options] - Options
-   * @param {number} [options.maxAttempts=225] - Maximum polling attempts
-   * @param {number} [options.intervalMs=400] - Polling interval in milliseconds
-   * @returns {Promise<{amount: number, ciphertext: string}>}
-   */
-  async _waitForPendingBalance(
-    address,
-    privateKey,
-    tokenAddress,
-    options = {},
-  ) {
-    const { maxAttempts = 225, intervalMs = 400 } = options;
-    await sleep(1000);
-
-    try {
-      for (let i = 0; i < maxAttempts; i++) {
-        const pending = await this._getPendingBalance(
-          address,
-          privateKey,
-          tokenAddress,
-        );
-
-        if (pending.amount > 0n) {
-          return pending;
-        }
-
-        await sleep(intervalMs);
-      }
-
-      throw new Error(
-        `Timeout waiting for pending balance after ${maxAttempts} attempts. The transfer may still be processing.`,
-      );
-    } catch (error) {
-      if (error.message.includes("Timeout waiting for pending balance")) {
-        throw error;
-      }
-      throw new Error(`Failed to wait for pending balance: ${error.message}`);
-    }
-  }
-
-  /**
    * Get the current fee amount for confidential transfers
    *
    * @returns {Promise<bigint>} Fee amount in wei

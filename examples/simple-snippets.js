@@ -1,7 +1,6 @@
 import { ethers } from "ethers";
 import dotenv from "dotenv";
-import { ConfidentialTransferClient } from "@fairblock/stabletrust";
-import { ERC20_ABI } from "./constants.js";
+import { ConfidentialTransferClient, ERC20_ABI } from "@fairblock/stabletrust";
 dotenv.config();
 const RPC_URL = process.env.RPC_URL || "https://rpc.testnet.stable.xyz";
 const EXPLORER_URL =

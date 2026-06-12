@@ -21,8 +21,7 @@
     "src/",
     "pkg/",
     "examples/",
-    "README.md",
-    "CHANGELOG.md"
+    "README.md"
   ],
   "repository": {
     "type": "git",

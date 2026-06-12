@@ -188,9 +188,7 @@ declare module "@fairblock/stabletrust" {
     /**
      * Get on-chain core state for an anonymous account.
      */
-    getAnonymousAccountInfo(
-      accountId: number | bigint,
-    ): Promise<AnonymousAccountInfo>;
+    getAnonymousAccountInfo(accountId: string): Promise<AnonymousAccountInfo>;
 
     /**
      * Read the current authNonce for an anonymous account.
@@ -211,7 +209,7 @@ declare module "@fairblock/stabletrust" {
      * Use `.available` and `.pending` for individual balances, `.amount` for the total.
      */
     getBalance(
-      accountId: number | bigint,
+      accountId: string,
       tokenAddress: string,
       elGamalPrivateKey: string,
     ): Promise<AnonymousAccountBalance>;
@@ -221,7 +219,7 @@ declare module "@fairblock/stabletrust" {
      * Use `getBalance` for a simpler numeric summary.
      */
     getAnonymousBalance(
-      accountId: number | bigint,
+      accountId: string,
       tokenAddress: string,
       elGamalPrivateKey: string,
     ): Promise<AnonymousBalance>;
@@ -484,7 +482,7 @@ declare module "@fairblock/stabletrust" {
   /**
    * Deposit options
    */
-  export interface DepositOptions {
+  export interface ConfidentialDepositOptions {
     waitForFinalization?: boolean;
   }
 
@@ -560,7 +558,7 @@ declare module "@fairblock/stabletrust" {
       wallet: ethers.Wallet | ethers.Signer,
       tokenAddress: string,
       amount: bigint | string | number,
-      options?: DepositOptions,
+      options?: ConfidentialDepositOptions,
     ): Promise<ethers.ContractTransactionReceipt>;
 
     /**
