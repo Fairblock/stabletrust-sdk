@@ -572,28 +572,15 @@ try {
 
 ### Common Issues and Solutions
 
-| Issue                          | Cause                                                   | Solution                                                |
-| :----------------------------- | :------------------------------------------------------ | :------------------------------------------------------ |
-| "Account does not exist"       | Recipient hasn't initialized their confidential account | Recipient must call `ensureAccount()` first             |
-| "Insufficient balance"         | Transfer amount exceeds available confidential balance  | Deposit more tokens or reduce transfer amount           |
-| "Account finalization timeout" | Account creation is still processing                    | Wait a few minutes and retry                            |
-| "Proof generation failed"      | Invalid inputs or cryptographic operation error         | Verify all parameters and ensure sufficient balance     |
-| "Amount too small"             | Amount rounds to 0 in contract scale                    | Use a larger amount (minimum depends on token decimals) |
+| Issue                              | Cause                                                                 | Solution                                                                                                            |
+| :--------------------------------- | :-------------------------------------------------------------------- | :------------------------------------------------------------------------------------------------------------------ |
+| "Account does not exist"           | Recipient hasn't initialized their confidential account               | Recipient must call `ensureAccount()` first                                                                         |
+| "Insufficient balance"             | Transfer amount exceeds available confidential balance                | Deposit more tokens or reduce transfer amount                                                                       |
+| "Account finalization timeout"     | Account creation is still processing                                  | Wait a few minutes and retry                                                                                        |
+| "Proof generation failed"          | Invalid inputs or cryptographic operation error                       | Verify all parameters and ensure sufficient balance                                                                 |
+| "Amount too small"                 | Amount rounds to 0 in contract scale                                  | Use a larger amount (minimum depends on token decimals)                                                             |
 | "Insufficient prepaid fee balance" | Anonymous account's prepaid fee reserve is below the per-transfer fee | Call `depositFees(wallet, accountId, amount)` to top up; use `getFeeToken()`/`getFeeAmount()` to check requirements |
-| Fairycloak HTTP error          | Relay unreachable or request rejected                   | Check the relay URL, API key, and account authorization |
-
----
-
-## Performance Metrics
-
-The following are estimated execution times for standard operations. Durations may vary based on network congestion and hardware.
-
-| Operation        | Avg Duration |
-| :--------------- | :----------- |
-| Account Creation | 45s          |
-| Deposit          | 63s          |
-| Transfer         | 58s          |
-| Withdraw         | 58s          |
+| Fairycloak HTTP error              | Relay unreachable or request rejected                                 | Check the relay URL, API key, and account authorization                                                             |
 
 ---
 
