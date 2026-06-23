@@ -24,7 +24,7 @@ dotenv.config();
 
 const EVM_RPC = process.env.EVM_RPC ?? "http://127.0.0.1:8545";
 const FAIRYCLOAK_URL = process.env.FAIRYCLOAK_URL ?? "http://127.0.0.1:8080";
-const CHAIN_ID = Number(process.env.CHAIN_ID ?? "31337");
+const CHAIN_ID = Number(process.env.CHAIN_ID ?? "5042002");
 const TOKEN_ADDRESS =
   process.env.TOKEN_ADDRESS ?? "0xE915164570b027C2A0FfadcB1B672192E35BF008";
 const TOKEN_DECIMALS = Number(process.env.TOKEN_DECIMALS ?? "6");
@@ -236,34 +236,39 @@ async function main() {
   log("  fee token  :", feeToken);
   log("  fee/xfer   :", fmt(feeAmount, TOKEN_DECIMALS), "tokens");
 
-  const feeBalance = await client.getPrepaidFeeBalance(anon1Id, feeToken);
-  log("  fee balance:", fmt(feeBalance, TOKEN_DECIMALS), "tokens");
-
-  if (feeBalance < MIN_FEE_BALANCE) {
-    log(
-      `  balance < ${fmt(MIN_FEE_BALANCE, TOKEN_DECIMALS)}, depositing ${fmt(FEE_DEPOSIT_AMOUNT, TOKEN_DECIMALS)} fee tokens (anon1 pays gas) …`,
-    );
-    const fd = await client.depositFees(
-      anon1Wallet,
-      anon1Id,
-      FEE_DEPOSIT_AMOUNT,
-    );
-    log("  request_id:", fd.request_id, "  status:", fd.status);
-    if (fd.error) log("    [!] Error:", fd.error);
-    if (fd.tx_hash) log("  tx_hash   :", fd.tx_hash);
-
-    const fdFinal = await client.waitForRequest(fd.request_id, {
-      timeoutMs: 180_000,
-    });
-    log("  status    :", fdFinal.status, "  tx_hash:", fdFinal.tx_hash ?? "—");
-    if (fdFinal.error) log("    [!] Error:", fdFinal.error);
-
-    const newFeeBalance = await client.getPrepaidFeeBalance(anon1Id, feeToken);
-    log("  new fee balance:", fmt(newFeeBalance, TOKEN_DECIMALS), "tokens");
+  if (feeAmount === 0n) {
+    log("  no fee configured — transactions are free, skipping top-up.");
   } else {
-    log(
-      `  fee balance sufficient (${fmt(feeBalance, TOKEN_DECIMALS)} ≥ ${fmt(MIN_FEE_BALANCE, TOKEN_DECIMALS)}), skipping deposit.`,
-    );
+    const feeBalance = await client.getPrepaidFeeBalance(anon1Id, feeToken);
+    log("  fee balance:", fmt(feeBalance, TOKEN_DECIMALS), "tokens");
+
+    if (feeBalance < MIN_FEE_BALANCE) {
+      const currency = feeToken === ethers.ZeroAddress ? "native" : "ERC-20";
+      log(
+        `  balance < ${fmt(MIN_FEE_BALANCE, TOKEN_DECIMALS)}, depositing ${fmt(FEE_DEPOSIT_AMOUNT, TOKEN_DECIMALS)} ${currency} fee tokens (anon1 pays gas) …`,
+      );
+      const fd = await client.depositFees(
+        anon1Wallet,
+        anon1Id,
+        FEE_DEPOSIT_AMOUNT,
+      );
+      log("  request_id:", fd.request_id, "  status:", fd.status);
+      if (fd.error) log("    [!] Error:", fd.error);
+      if (fd.tx_hash) log("  tx_hash   :", fd.tx_hash);
+
+      const fdFinal = await client.waitForRequest(fd.request_id, {
+        timeoutMs: 180_000,
+      });
+      log("  status    :", fdFinal.status, "  tx_hash:", fdFinal.tx_hash ?? "—");
+      if (fdFinal.error) log("    [!] Error:", fdFinal.error);
+
+      const newFeeBalance = await client.getPrepaidFeeBalance(anon1Id, feeToken);
+      log("  new fee balance:", fmt(newFeeBalance, TOKEN_DECIMALS), "tokens");
+    } else {
+      log(
+        `  fee balance sufficient (${fmt(feeBalance, TOKEN_DECIMALS)} ≥ ${fmt(MIN_FEE_BALANCE, TOKEN_DECIMALS)}), skipping deposit.`,
+      );
+    }
   }
 
   // ── [6] Transfer anon1 → anon2 ───────────────────────────────────────────────

@@ -1488,8 +1488,6 @@ export class AnonymousTransferClient {
     ]);
     if (feeAmount === 0n) return; // no fee configured
 
-    if (feeToken === ethers.ZeroAddress) return; // fee token not set
-
     const balance = await this.getPrepaidFeeBalance(accountId, feeToken);
     if (balance < feeAmount) {
       throw new Error(
@@ -1534,45 +1532,51 @@ export class AnonymousTransferClient {
       if (amountBig <= 0n) throw new Error("Amount must be greater than 0");
 
       const feeToken = await this.getFeeToken();
-      if (feeToken === ethers.ZeroAddress)
-        throw new Error(
-          "No fee token is currently configured on the contract. Contact the protocol operator.",
-        );
+      const isNative = feeToken === ethers.ZeroAddress;
 
       const depositorAddress = await authWallet.getAddress();
       const walletWithProvider = authWallet.connect
         ? authWallet.connect(this.provider)
         : authWallet;
 
-      // 1. Approve if needed
-      const tokenContract = new ethers.Contract(
-        feeToken,
-        [
-          "function balanceOf(address) view returns (uint256)",
-          "function allowance(address,address) view returns (uint256)",
-          "function approve(address,uint256) returns (bool)",
-        ],
-        walletWithProvider,
-      );
-
-      const [balance, allowance] = await Promise.all([
-        tokenContract.balanceOf(depositorAddress),
-        tokenContract.allowance(depositorAddress, this.diamondAddress),
-      ]);
-
-      if (balance < amountBig)
-        throw new Error(
-          `Insufficient fee token balance. Required: ${amountBig}, available: ${balance}`,
+      if (isNative) {
+        // Native currency: check wallet balance, no ERC-20 approve needed
+        const balance = await this.provider.getBalance(depositorAddress);
+        if (balance < amountBig)
+          throw new Error(
+            `Insufficient native balance. Required: ${amountBig}, available: ${balance}`,
+          );
+      } else {
+        // ERC-20: approve if needed
+        const tokenContract = new ethers.Contract(
+          feeToken,
+          [
+            "function balanceOf(address) view returns (uint256)",
+            "function allowance(address,address) view returns (uint256)",
+            "function approve(address,uint256) returns (bool)",
+          ],
+          walletWithProvider,
         );
 
-      if (allowance < amountBig) {
-        const approveTx = await tokenContract.approve(
-          this.diamondAddress,
-          ethers.MaxUint256,
-        );
-        const receipt = await approveTx.wait();
-        if (!receipt || receipt.status === 0)
-          throw new Error("Fee token approval failed");
+        const [balance, allowance] = await Promise.all([
+          tokenContract.balanceOf(depositorAddress),
+          tokenContract.allowance(depositorAddress, this.diamondAddress),
+        ]);
+
+        if (balance < amountBig)
+          throw new Error(
+            `Insufficient fee token balance. Required: ${amountBig}, available: ${balance}`,
+          );
+
+        if (allowance < amountBig) {
+          const approveTx = await tokenContract.approve(
+            this.diamondAddress,
+            ethers.MaxUint256,
+          );
+          const receipt = await approveTx.wait();
+          if (!receipt || receipt.status === 0)
+            throw new Error("Fee token approval failed");
+        }
       }
 
       // 2. EIP-712 AnonymousAddFees signature
@@ -1614,6 +1618,7 @@ export class AnonymousTransferClient {
         this.provider.getFeeData(),
       ]);
 
+      const txValue = isNative ? amountBig : 0n;
       let txObj;
       if (feeData.maxFeePerGas) {
         txObj = {
@@ -1624,7 +1629,7 @@ export class AnonymousTransferClient {
           gasLimit,
           maxFeePerGas: (feeData.maxFeePerGas * 12n) / 10n,
           maxPriorityFeePerGas: feeData.maxPriorityFeePerGas ?? 0n,
-          value: 0n,
+          value: txValue,
         };
       } else {
         txObj = {
@@ -1634,7 +1639,7 @@ export class AnonymousTransferClient {
           chainId: BigInt(this.chainId),
           gasLimit,
           gasPrice: (feeData.gasPrice * 11n) / 10n,
-          value: 0n,
+          value: txValue,
         };
       }
 
