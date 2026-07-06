@@ -2,7 +2,6 @@ import { ethers } from "ethers";
 // Pinata uploads API endpoint
 // Docs: https://docs.pinata.cloud
 const PINATA_UPLOAD_URL = "https://uploads.pinata.cloud/v3/files";
-const PINATA_JWT = process.env.PINATA_JWT;
 
 // Anonymous account ID constraints (must match the Fairycloak relay and on-chain contract rules)
 export const MAX_ANONYMOUS_ACCOUNT_ID_LENGTH = 20;
@@ -125,11 +124,15 @@ export async function waitForCondition(
  * The object will be stored as a UTF-8 JSON blob.
  *
  * @param {any} data - JSON-serializable data to store.
+ * @param {string} [jwt] - Pinata JWT. Falls back to `process.env.PINATA_JWT` when omitted.
  * @returns {Promise<string>} The CID string.
  */
-export async function uploadJsonToIpfs(data) {
+export async function uploadJsonToIpfs(data, jwt) {
+  const PINATA_JWT = jwt || process.env.PINATA_JWT;
   if (!PINATA_JWT) {
-    throw new Error("PINATA_JWT is not set");
+    throw new Error(
+      "Pinata JWT is not set - pass `pinataJwt` in the client config or set PINATA_JWT in the environment",
+    );
   }
 
   const json = JSON.stringify(data);
@@ -162,11 +165,15 @@ export async function uploadJsonToIpfs(data) {
  *
  * @param {Uint8Array|ArrayBuffer} bytes - Raw proof bytes.
  * @param {string} [name='proof.bin'] - Optional file name metadata.
+ * @param {string} [jwt] - Pinata JWT. Falls back to `process.env.PINATA_JWT` when omitted.
  * @returns {Promise<string>} The CID string.
  */
-export async function uploadBytesToIpfs(bytes, name = "proof.bin") {
+export async function uploadBytesToIpfs(bytes, name = "proof.bin", jwt) {
+  const PINATA_JWT = jwt || process.env.PINATA_JWT;
   if (!PINATA_JWT) {
-    throw new Error("PINATA_JWT is not set");
+    throw new Error(
+      "Pinata JWT is not set - pass `pinataJwt` in the client config or set PINATA_JWT in the environment",
+    );
   }
 
   const uint8 = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);

@@ -367,6 +367,47 @@ const result = await client.withdraw(wallet, accountId, {
 });
 ```
 
+### Off-chain ZKP proofs (IPFS)
+
+By default an anonymous transfer submits its zero-knowledge proof **inline** (in the relay request and as on-chain calldata). For `transferToPublic` and `transferToAnonymous` you can instead set **`offchainZKP: true`** to upload the proof to **IPFS (via Pinata)** and put only the resulting **CID** on-chain - Fairyport then fetches the full proof from IPFS and verifies it off-chain. This keeps large (~2.5 KB) proofs out of calldata. The flag is optional and defaults to `false`, so the inline path is unchanged. Only these two transfer methods support it; `deposit`, `applyPending`, and `withdraw` do not.
+
+**Providing a Pinata JWT.** When `offchainZKP` is enabled the SDK needs a Pinata JWT to pin the proof. Provide it either via the client config (recommended, and required in browsers where `process.env` is unavailable):
+
+```javascript
+const client = new AnonymousTransferClient({
+  fairycloakUrl: "http://127.0.0.1:8080",
+  chainId: 31337,
+  rpcUrl: "http://127.0.0.1:8545",
+  pinataJwt: process.env.MY_PINATA_JWT, // your Pinata JWT
+});
+```
+
+…or, in Node.js, by setting the `PINATA_JWT` environment variable (used as a fallback when `pinataJwt` is not passed).
+
+**Usage** - add the flag to a normal transfer:
+
+```javascript
+// anonymous -> anonymous; proof stored on IPFS, CID on-chain
+await client.transferToAnonymous(wallet, "alice", {
+  recipientId: "bob",
+  token: tokenAddress,
+  amount: ethers.parseUnits("5", 18),
+  elGamalPrivateKey: keys.privateKey,
+  offchainZKP: true,
+});
+
+// anonymous -> public EVM address
+await client.transferToPublic(wallet, "alice", {
+  recipient: "0xRecipientAddress",
+  token: tokenAddress,
+  amount: ethers.parseUnits("5", 18),
+  elGamalPrivateKey: keys.privateKey,
+  offchainZKP: true,
+});
+```
+
+In manual-proof mode (when you pass a pre-computed `proof`) with `offchainZKP: true`, the SDK treats `proof` as an already-uploaded CID rather than re-uploading it.
+
 ### Prepaid Fees
 
 Every `transferToPublic` and `transferToAnonymous` call deducts a protocol fee from the sender account's **prepaid fee reserve**. The SDK checks this balance before submitting a transfer and throws a descriptive error if it's insufficient — top up the reserve with `depositFees` before transferring.

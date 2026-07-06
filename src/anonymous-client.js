@@ -4,6 +4,7 @@ import {
   encodeTransferProof,
   encodeWithdrawProof,
   validateAnonymousAccountId,
+  uploadBytesToIpfs,
 } from "./utils.js";
 import { getStabletrustContractAddress } from "./constants.js";
 
@@ -61,8 +62,10 @@ export class AnonymousTransferClient {
    * @param {string} config.rpcUrl - EVM JSON-RPC endpoint (used for on-chain reads and raw-tx signing)
    * @param {string} [config.diamondAddress] - Optional override for the diamond contract address
    * @param {string} [config.apiKey] - Optional Fairycloak API key
+   * @param {string} [config.pinataJwt] - Pinata JWT used to upload proofs to IPFS when a transfer
+   *   sets `offchainZKP: true`. Falls back to `process.env.PINATA_JWT` (Node.js only) when omitted.
    */
-  constructor({ fairycloakUrl, diamondAddress, chainId, rpcUrl, apiKey } = {}) {
+  constructor({ fairycloakUrl, diamondAddress, chainId, rpcUrl, apiKey, pinataJwt } = {}) {
     if (!fairycloakUrl) throw new Error("fairycloakUrl is required");
     if (!chainId) throw new Error("chainId is required");
     if (!rpcUrl) throw new Error("rpcUrl is required");
@@ -80,6 +83,7 @@ export class AnonymousTransferClient {
     this.chainId = Number(chainId);
     this.rpcUrl = rpcUrl;
     this.apiKey = apiKey || null;
+    this.pinataJwt = pinataJwt || null;
 
     this.provider = new ethers.JsonRpcProvider(rpcUrl);
     this._wasmModule = null;
@@ -516,6 +520,63 @@ export class AnonymousTransferClient {
         "hex",
       )
     );
+  }
+
+  // ───────────────── off-chain ZKP (IPFS) helpers ─────────────────
+
+  /**
+   * Upload ABI-encoded proof bytes to IPFS (Pinata) for an off-chain ZKP transfer and
+   * return the bare CID. With off-chain ZKP, only this CID (<=128 bytes) is placed on-chain;
+   * Fairyport later fetches the full proof from IPFS and verifies it off-chain.
+   *
+   * @param {string} proofHex - "0x…" ABI-encoded proof hex (from generateTransferProof)
+   * @returns {Promise<string>} bare CID (no "ipfs://" prefix)
+   * @private
+   */
+  async _uploadProofToIpfs(proofHex) {
+    if (!proofHex) throw new Error("cannot upload an empty proof to IPFS");
+    const bytes = ethers.getBytes(proofHex);
+    const cid = await uploadBytesToIpfs(bytes, "anon-transfer-proof.bin", this.pinataJwt);
+    if (!cid) {
+      throw new Error(
+        "IPFS upload returned no CID (check PINATA_JWT and Pinata connectivity)",
+      );
+    }
+    return String(cid).trim();
+  }
+
+  /**
+   * Resolve the transfer `proof` payload and its EIP-712 `proofHash`, for `offchainZKP`.
+   *
+   * - `offchainZKP=false` (inline proof, default): the payload is the proof hex and
+   *   `proofHash = keccak256(proof bytes)` - the original architecture, unchanged.
+   * - `offchainZKP=true` (off-chain ZKP): the payload is a bare IPFS CID and
+   *   `proofHash = keccak256(utf8 bytes of the CID)`. This matches the Fairycloak relay and the
+   *   on-chain contract, which store the CID and verify the proof off-chain.
+   *
+   * @param {Object} p
+   * @param {boolean} p.offchainZKP
+   * @param {string} [p.proofHex] - "0x…" proof hex (auto mode, or inline manual mode)
+   * @param {string} [p.cid] - pre-uploaded bare CID (manual mode + offchainZKP)
+   * @returns {Promise<{proofPayload: string, proofHash: string}>}
+   * @private
+   */
+  async _resolveProofPayload({ offchainZKP, proofHex, cid }) {
+    if (!offchainZKP) {
+      const hex = proofHex.startsWith("0x") ? proofHex : `0x${proofHex}`;
+      return { proofPayload: hex, proofHash: ethers.keccak256(hex) };
+    }
+    const resolvedCid = (cid ?? (await this._uploadProofToIpfs(proofHex)))
+      .toString()
+      .trim()
+      .replace(/^ipfs:\/\//i, "");
+    if (!resolvedCid) {
+      throw new Error("off-chain ZKP transfer requires a non-empty IPFS CID");
+    }
+    return {
+      proofPayload: resolvedCid,
+      proofHash: ethers.keccak256(ethers.toUtf8Bytes(resolvedCid)),
+    };
   }
 
   // ─────────────────── Fairycloak operations ─────────────────────
@@ -956,6 +1017,7 @@ export class AnonymousTransferClient {
       elGamalPrivateKey,
       amount,
       destinationPublicKey,
+      offchainZKP = false,
     },
     options = {},
   ) {
@@ -967,9 +1029,16 @@ export class AnonymousTransferClient {
       if (!ethers.isAddress(token))
         throw new Error(`Invalid token address: ${token}`);
 
+      // `proofHex` holds the "0x…" proof (supplied or auto-generated below).
+      const manualProof = Boolean(proof);
       let proofHex;
-      if (proof) {
-        proofHex = proof.startsWith("0x") ? proof : `0x${proof}`;
+      let cid;
+      if (manualProof) {
+        if (offchainZKP) {
+          cid = proof;
+        } else {
+          proofHex = proof.startsWith("0x") ? proof : `0x${proof}`;
+        }
       } else {
         if (!elGamalPrivateKey)
           throw new Error("Either proof or elGamalPrivateKey must be provided");
@@ -1021,7 +1090,13 @@ export class AnonymousTransferClient {
 
       const authNonce = await this.getAuthNonce(accountId);
       const deadline = this._makeDeadline(deadlineOffset);
-      const proofHash = ethers.keccak256(proofHex);
+
+      // Resolve the proof payload (inline hex vs off-chain IPFS CID) and its EIP-712 hash.
+      const { proofPayload, proofHash } = await this._resolveProofPayload({
+        offchainZKP,
+        proofHex,
+        cid,
+      });
 
       const domain = this._buildDomain();
       const types = {
@@ -1030,6 +1105,7 @@ export class AnonymousTransferClient {
           { name: "recipient", type: "address" },
           { name: "token", type: "address" },
           { name: "proofHash", type: "bytes32" },
+          { name: "offchainZKP", type: "bool" },
           { name: "authNonce", type: "uint256" },
           { name: "deadline", type: "uint256" },
         ],
@@ -1039,6 +1115,7 @@ export class AnonymousTransferClient {
         recipient,
         token,
         proofHash,
+        offchainZKP,
         authNonce,
         deadline: BigInt(deadline),
       };
@@ -1049,7 +1126,8 @@ export class AnonymousTransferClient {
         sender_id: accountId,
         recipient,
         token,
-        proof: proofHex,
+        proof: proofPayload,
+        offchain_zkp: offchainZKP,
         auth_nonce: String(authNonce),
         deadline: String(deadline),
         signature,
@@ -1093,6 +1171,7 @@ export class AnonymousTransferClient {
       elGamalPrivateKey,
       amount,
       destinationPublicKey,
+      offchainZKP = false,
     },
     options = {},
   ) {
@@ -1103,9 +1182,17 @@ export class AnonymousTransferClient {
       if (!ethers.isAddress(token))
         throw new Error(`Invalid token address: ${token}`);
 
+      // In manual mode + offchainZKP the caller passes a CID (not proof hex),, otherwise
+      // `proofHex` holds the "0x…" proof 
+      const manualProof = Boolean(proof);
       let proofHex;
-      if (proof) {
-        proofHex = proof.startsWith("0x") ? proof : `0x${proof}`;
+      let cid;
+      if (manualProof) {
+        if (offchainZKP) {
+          cid = proof;
+        } else {
+          proofHex = proof.startsWith("0x") ? proof : `0x${proof}`;
+        }
       } else {
         if (!elGamalPrivateKey)
           throw new Error("Either proof or elGamalPrivateKey must be provided");
@@ -1157,7 +1244,12 @@ export class AnonymousTransferClient {
 
       const authNonce = await this.getAuthNonce(senderAccountId);
       const deadline = this._makeDeadline(deadlineOffset);
-      const proofHash = ethers.keccak256(proofHex);
+
+      const { proofPayload, proofHash } = await this._resolveProofPayload({
+        offchainZKP,
+        proofHex,
+        cid,
+      });
 
       const domain = this._buildDomain();
       const types = {
@@ -1166,6 +1258,7 @@ export class AnonymousTransferClient {
           { name: "recipientId", type: "string" },
           { name: "token", type: "address" },
           { name: "proofHash", type: "bytes32" },
+          { name: "offchainZKP", type: "bool" },
           { name: "authNonce", type: "uint256" },
           { name: "deadline", type: "uint256" },
         ],
@@ -1175,6 +1268,7 @@ export class AnonymousTransferClient {
         recipientId: String(recipientId),
         token,
         proofHash,
+        offchainZKP,
         authNonce,
         deadline: BigInt(deadline),
       };
@@ -1185,7 +1279,8 @@ export class AnonymousTransferClient {
         sender_id: senderAccountId,
         recipient_id: recipientId,
         token,
-        proof: proofHex,
+        proof: proofPayload,
+        offchain_zkp: offchainZKP,
         auth_nonce: String(authNonce),
         deadline: String(deadline),
         signature,

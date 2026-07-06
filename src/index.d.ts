@@ -14,6 +14,11 @@ declare module "@fairblock/stabletrust" {
     diamondAddress?: string;
     /** Optional API key for Fairycloak */
     apiKey?: string;
+    /**
+     * Optional Pinata JWT, used to upload proofs to IPFS when a transfer sets `offchainZKP: true`.
+     * Falls back to `process.env.PINATA_JWT` (Node.js only) when omitted 
+     */
+    pinataJwt?: string;
   }
 
   export interface AnonymousAccountInfo {
@@ -81,6 +86,11 @@ declare module "@fairblock/stabletrust" {
     amount?: bigint | string | number;
     /** Recipient ElGamal public key (base64). Auto-resolved from the chain if omitted. */
     destinationPublicKey?: string;
+    /**
+     * When true, the ZK proof is uploaded to IPFS (Pinata) and only its CID is put on-chain,
+     * instead of sending the full proof inline. Requires a Pinata JWT.
+     */
+    offchainZKP?: boolean;
   }
 
   export interface TransferToAnonymousParams {
@@ -94,6 +104,11 @@ declare module "@fairblock/stabletrust" {
     amount?: bigint | string | number;
     /** Recipient ElGamal public key (base64). Auto-resolved from the chain if omitted. */
     destinationPublicKey?: string;
+    /**
+     * When true, the ZK proof is uploaded to IPFS (Pinata) and only its CID is put on-chain,
+     * instead of sending the full proof inline. Requires a Pinata JWT.
+     */
+    offchainZKP?: boolean;
   }
 
   export interface WithdrawParams {
