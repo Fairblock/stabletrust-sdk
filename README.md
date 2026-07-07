@@ -369,7 +369,7 @@ const result = await client.withdraw(wallet, accountId, {
 
 ### Off-chain ZKP proofs (IPFS)
 
-By default an anonymous transfer submits its zero-knowledge proof **inline** (in the relay request and as on-chain calldata). For `transferToPublic` and `transferToAnonymous` you can instead set **`offchainZKP: true`** to upload the proof to **IPFS (via Pinata)** and put only the resulting **CID** on-chain - Fairyport then fetches the full proof from IPFS and verifies it off-chain. This keeps large (~2.5 KB) proofs out of calldata. The flag is optional and defaults to `false`, so the inline path is unchanged. Only these two transfer methods support it; `deposit`, `applyPending`, and `withdraw` do not.
+By default an anonymous proof is submitted **inline** (in the relay request and as on-chain calldata). For `transferToPublic`, `transferToAnonymous`, and `withdraw` you can instead set **`offchainZKP: true`** to upload the proof to **IPFS (via Pinata)** and put only the resulting **CID** on-chain - Fairyport then fetches the full proof from IPFS and verifies it off-chain. This keeps large (~2.5 KB) proofs out of calldata. The flag is optional and defaults to `false`, so the inline path is unchanged. These proof-carrying methods support it; `deposit` and `applyPending` do not (they carry no ZK proof).
 
 **Providing a Pinata JWT.** When `offchainZKP` is enabled the SDK needs a Pinata JWT to pin the proof. Provide it either via the client config (recommended, and required in browsers where `process.env` is unavailable):
 
@@ -401,6 +401,15 @@ await client.transferToPublic(wallet, "alice", {
   recipient: "0xRecipientAddress",
   token: tokenAddress,
   amount: ethers.parseUnits("5", 18),
+  elGamalPrivateKey: keys.privateKey,
+  offchainZKP: true,
+});
+
+// withdraw to a public address; withdraw proof stored on IPFS, CID on-chain
+await client.withdraw(wallet, "alice", {
+  destination: "0xDestinationAddress",
+  token: tokenAddress,
+  plainAmount: ethers.parseUnits("5", 18),
   elGamalPrivateKey: keys.privateKey,
   offchainZKP: true,
 });

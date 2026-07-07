@@ -120,6 +120,12 @@ declare module "@fairblock/stabletrust" {
     proof?: string;
     /** ElGamal private key (base64) for auto-proof generation. Contract scale is derived automatically. */
     elGamalPrivateKey?: string;
+    /**
+     * When true, the ZK proof is uploaded to IPFS (Pinata) and only its CID is put on-chain,
+     * instead of sending the full proof inline. Requires a Pinata JWT (see
+     * `AnonymousTransferClientConfig.pinataJwt` or `PINATA_JWT`). Defaults to false.
+     */
+    offchainZKP?: boolean;
   }
 
   export interface AnonymousAccountBalance {

@@ -546,7 +546,7 @@ export class AnonymousTransferClient {
   }
 
   /**
-   * Resolve the transfer `proof` payload and its EIP-712 `proofHash`, for `offchainZKP`.
+   * Resolve a transfer/withdraw `proof` payload and its EIP-712 `proofHash`, for `offchainZKP`.
    *
    * - `offchainZKP=false` (inline proof, default): the payload is the proof hex and
    *   `proofHash = keccak256(proof bytes)` - the original architecture, unchanged.
@@ -1357,6 +1357,8 @@ export class AnonymousTransferClient {
    * @param {bigint|string|number} params.plainAmount    - Withdrawal amount in token units
    * @param {string}             [params.proof]          - Pre-computed ZK proof ("0x..." hex)
    * @param {string}             [params.elGamalPrivateKey] - ElGamal private key (base64) for auto-proof
+   * @param {boolean}            [params.offchainZKP=false] - When true, upload the proof to IPFS and put
+   *   only its CID on-chain (needs a Pinata JWT via `pinataJwt` config or `PINATA_JWT`)
    * @param {Object}  [options]
    * @param {number}  [options.deadlineOffset=3600]
    * @returns {Promise<{request_id:string, tx_hash:string, status:string}>}
@@ -1370,6 +1372,7 @@ export class AnonymousTransferClient {
       plainAmount,
       proof,
       elGamalPrivateKey,
+      offchainZKP = false,
     },
     options = {},
   ) {
@@ -1404,9 +1407,16 @@ export class AnonymousTransferClient {
       const authNonce = accountInfo.authNonce;
       const txId = accountInfo.txId;
 
+      // In manual mode + offchainZKP the caller passes a CID (not proof hex)
+      const manualProof = Boolean(proof);
       let proofHex;
-      if (proof) {
-        proofHex = proof.startsWith("0x") ? proof : `0x${proof}`;
+      let cid;
+      if (manualProof) {
+        if (offchainZKP) {
+          cid = proof;
+        } else {
+          proofHex = proof.startsWith("0x") ? proof : `0x${proof}`;
+        }
       } else {
         if (!elGamalPrivateKey)
           throw new Error("Either proof or elGamalPrivateKey must be provided");
@@ -1431,7 +1441,13 @@ export class AnonymousTransferClient {
         });
       }
       const deadline = this._makeDeadline(deadlineOffset);
-      const proofHash = ethers.keccak256(proofHex);
+
+      // Resolve the proof payload (inline hex vs off-chain IPFS CID) and its EIP-712 hash.
+      const { proofPayload, proofHash } = await this._resolveProofPayload({
+        offchainZKP,
+        proofHex,
+        cid,
+      });
 
       const domain = this._buildDomain();
       const types = {
@@ -1441,6 +1457,7 @@ export class AnonymousTransferClient {
           { name: "token", type: "address" },
           { name: "plainAmount", type: "uint256" },
           { name: "proofHash", type: "bytes32" },
+          { name: "offchainZKP", type: "bool" },
           { name: "authNonce", type: "uint256" },
           { name: "deadline", type: "uint256" },
         ],
@@ -1451,6 +1468,7 @@ export class AnonymousTransferClient {
         token,
         plainAmount: withdrawAmountContractScale,
         proofHash,
+        offchainZKP,
         authNonce,
         deadline: BigInt(deadline),
       };
@@ -1462,7 +1480,8 @@ export class AnonymousTransferClient {
         destination,
         token,
         plain_amount: String(withdrawAmountContractScale),
-        proof: proofHex,
+        proof: proofPayload,
+        offchain_zkp: offchainZKP,
         auth_nonce: String(authNonce),
         deadline: String(deadline),
         signature,
