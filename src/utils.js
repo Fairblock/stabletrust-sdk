@@ -69,6 +69,37 @@ export function encodeWithdrawProof(proofData) {
 }
 
 /**
+ * Convert a raw ERC-20 token amount to the contract's 2-decimal scale
+ * (`rawAmount * 100 / 10^decimals`).
+ *
+ * Throws when the amount rounds to zero and warns when a sub-cent remainder
+ * is dropped, so callers never silently no-op or lose precision.
+ *
+ * @param {bigint|string|number} rawAmount - Amount in raw ERC-20 units
+ * @param {bigint|number} tokenDecimals - Token decimals
+ * @returns {bigint} Amount in contract scale
+ * @throws {Error} If the amount rounds to 0 in contract scale
+ */
+export function toContractScale(rawAmount, tokenDecimals) {
+  const raw = BigInt(rawAmount);
+  const divisor = 10n ** BigInt(tokenDecimals);
+  const scaled = (raw * 100n) / divisor;
+
+  if (scaled <= 0n) {
+    throw new Error(
+      `Amount too small: ${raw} raw units rounds to 0 in contract scale`,
+    );
+  }
+  if ((raw * 100n) % divisor !== 0n) {
+    console.warn(
+      `Amount ${raw} is not fully representable in contract scale (2 decimals); the sub-cent remainder will be dropped.`,
+    );
+  }
+
+  return scaled;
+}
+
+/**
  * Delays execution for a specified time
  *
  * @param {number} ms - Milliseconds to wait

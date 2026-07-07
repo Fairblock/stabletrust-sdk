@@ -197,7 +197,13 @@ export class AnonymousTransferClient {
    */
   async _toContractScale(tokenAddress, rawAmount) {
     const decimals = await this._fetchTokenDecimals(tokenAddress);
-    return (rawAmount * 100n) / 10n ** BigInt(decimals);
+    const divisor = 10n ** BigInt(decimals);
+    if ((rawAmount * 100n) % divisor !== 0n) {
+      console.warn(
+        `Amount ${rawAmount} is not fully representable in contract scale (2 decimals); the sub-cent remainder will be dropped.`,
+      );
+    }
+    return (rawAmount * 100n) / divisor;
   }
 
   // ─────────────────────── on-chain reads ────────────────────────
@@ -314,9 +320,14 @@ export class AnonymousTransferClient {
     );
     if (!ciphertext) return { amount: 0, ciphertext: null };
     const wasm = await this._getWasm();
-    const result = JSON.parse(
-      wasm.decrypt_ciphertext(ciphertext, elGamalPrivateKey),
-    );
+    let result;
+    try {
+      result = JSON.parse(wasm.decrypt_ciphertext(ciphertext, elGamalPrivateKey));
+    } catch (e) {
+      throw new Error(
+        `Decryption failed. Is the elGamalPrivateKey correct for this accountId? (${e?.message ?? e})`,
+      );
+    }
     return { amount: result.decrypted_amount ?? 0, ciphertext };
   }
 

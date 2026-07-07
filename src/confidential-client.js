@@ -9,6 +9,7 @@ import {
   encodeTransferProof,
   encodeWithdrawProof,
   sleep,
+  toContractScale,
   uploadBytesToIpfs,
 } from "./utils.js";
 import { initializeWasm } from "./wasm-loader.js";
@@ -220,10 +221,13 @@ export class ConfidentialTransferClient {
   /**
    * Get total decrypted balance (available + pending) for an address
    *
+   * Amounts are in raw token units (bigint). Note that this differs from the anonymous client, which returns
+   * contract scale (amount * 100 / 10^decimals).
+   *
    * @param {string} address - Account address
    * @param {string} privateKey - Private key for decryption
    * @param {string} tokenAddress - Token address
-   * @returns {Promise<{amount: number, available: {amount: number, ciphertext: string|null}, pending: {amount: number, ciphertext: string|null}}>}
+   * @returns {Promise<{amount: bigint, available: {amount: bigint, ciphertext: string|null}, pending: {amount: bigint, ciphertext: string|null}}>}
    */
   async getConfidentialBalance(address, privateKey, tokenAddress) {
     try {
@@ -373,8 +377,7 @@ export class ConfidentialTransferClient {
 
       const tokenContract = this._getTokenContract(tokenAddress);
       const tokenDecimals = await tokenContract.decimals();
-      const depositAmount =
-        (BigInt(amount) * 100n) / 10n ** BigInt(tokenDecimals);
+      const depositAmount = toContractScale(amount, tokenDecimals);
 
       // Check token balance and allowance in parallel
       const [tokenBalance, allowance] = await Promise.all([
@@ -426,7 +429,7 @@ export class ConfidentialTransferClient {
    * @param {ethers.Wallet|ethers.Signer} senderWallet - Sender's wallet
    * @param {string} recipientAddress - Recipient's address
    * @param {string} tokenAddress - Token address to transfer
-   * @param {number} amount - Amount to transfer
+   * @param {bigint|string|number} amount - Amount to transfer (in token units)
    * @param {Object} [options] - Options
    * @param {boolean} [options.waitForFinalization=true] - Wait for transfer finalization
    * @returns {Promise<Object>} Transaction receipt
@@ -456,8 +459,7 @@ export class ConfidentialTransferClient {
       }
       const tokenContract = this._getTokenContract(tokenAddress);
       const tokenDecimals = await tokenContract.decimals();
-      const transferAmount =
-        (BigInt(amount) * 100n) / 10n ** BigInt(tokenDecimals);
+      const transferAmount = toContractScale(amount, tokenDecimals);
 
       const senderAddress = await senderWallet.getAddress();
 
@@ -497,14 +499,11 @@ export class ConfidentialTransferClient {
         "transfer",
       );
 
-      const [balanceSummary, fee] = await Promise.all([
-        this.getConfidentialBalance(
-          senderAddress,
-          derivedSenderKeys.privateKey,
-          tokenAddress,
-        ),
-        this.getFeeAmount(),
-      ]);
+      const balanceSummary = await this.getConfidentialBalance(
+        senderAddress,
+        derivedSenderKeys.privateKey,
+        tokenAddress,
+      );
       const derivedCurrentBalanceCiphertext =
         balanceSummary.available.ciphertext;
       const derivedCurrentBalance = balanceSummary.available.amount;
@@ -613,7 +612,7 @@ export class ConfidentialTransferClient {
    *
    * @param {ethers.Wallet|ethers.Signer} wallet - The wallet to withdraw from
    * @param {string} tokenAddress - Token address to withdraw
-   * @param {number} amount - Amount to withdraw
+   * @param {bigint|string|number} amount - Amount to withdraw (in token units)
    * @param {Object} [options] - Options
    * @param {boolean} [options.waitForFinalization=true] - Wait for withdrawal finalization
    * @returns {Promise<Object>} Transaction receipt
@@ -635,8 +634,7 @@ export class ConfidentialTransferClient {
 
       const tokenContract = this._getTokenContract(tokenAddress);
       const tokenDecimals = await tokenContract.decimals();
-      const withdrawAmount =
-        (BigInt(amount) * 100n) / 10n ** BigInt(tokenDecimals);
+      const withdrawAmount = toContractScale(amount, tokenDecimals);
 
       // Auto-derive keys
       const derivedKeys = await this._deriveKeys(wallet);

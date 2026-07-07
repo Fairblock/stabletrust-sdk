@@ -479,7 +479,7 @@ declare module "@fairblock/stabletrust" {
    * Balance information
    */
   export interface Balance {
-    amount: number;
+    amount: bigint;
     ciphertext: string | null;
   }
 
@@ -487,7 +487,7 @@ declare module "@fairblock/stabletrust" {
    * Confidential balance summary
    */
   export interface ConfidentialBalance {
-    amount: number;
+    amount: bigint;
     available: Balance;
     pending: Balance;
   }
@@ -595,7 +595,7 @@ declare module "@fairblock/stabletrust" {
       senderWallet: ethers.Wallet | ethers.Signer,
       recipientAddress: string,
       tokenAddress: string,
-      amount: number,
+      amount: bigint | string | number,
       options?: TransferOptions,
     ): Promise<ethers.ContractTransactionReceipt>;
 
@@ -609,7 +609,7 @@ declare module "@fairblock/stabletrust" {
     withdraw(
       wallet: ethers.Wallet | ethers.Signer,
       tokenAddress: string,
-      amount: number,
+      amount: bigint | string | number,
       options?: WithdrawOptions,
     ): Promise<ethers.ContractTransactionReceipt>;
 
