@@ -34,8 +34,11 @@ export class ConfidentialTransferClient {
    * @param {string} rpcUrl - RPC endpoint URL
    * @param {string|number} contractAddressOrChainId - Contract address or chain ID
    * @param {number} [chainId] - Chain ID when contract address is provided
+   * @param {Object} [options]
+   * @param {string} [options.ipfsUploadUrl] - StableTrust IPFS upload endpoint for off-chain proof uploads
+   * @param {string} [options.ipfsApiKey] - Optional bearer token for the StableTrust IPFS upload endpoint
    */
-  constructor(rpcUrl, contractAddressOrChainId, chainId) {
+  constructor(rpcUrl, contractAddressOrChainId, chainId, options = {}) {
     // Validate required config
     if (!rpcUrl) {
       throw new Error("rpcUrl is required");
@@ -43,10 +46,15 @@ export class ConfidentialTransferClient {
 
     let resolvedChainId;
     let resolvedContractAddress;
+    let ipfsOptions = options || {};
 
-    if (typeof contractAddressOrChainId === "number" && chainId === undefined) {
+    if (
+      typeof contractAddressOrChainId === "number" &&
+      (chainId === undefined || typeof chainId === "object")
+    ) {
       resolvedChainId = contractAddressOrChainId;
       resolvedContractAddress = getStabletrustContractAddress(resolvedChainId);
+      ipfsOptions = typeof chainId === "object" && chainId !== null ? chainId : ipfsOptions;
     } else {
       resolvedChainId = chainId;
       resolvedContractAddress =
@@ -74,6 +82,8 @@ export class ConfidentialTransferClient {
       rpcUrl,
       contractAddress: ethers.getAddress(resolvedContractAddress),
       chainId: Number(resolvedChainId),
+      ipfsUploadUrl: ipfsOptions.ipfsUploadUrl || null,
+      ipfsApiKey: ipfsOptions.ipfsApiKey || null,
     };
 
     // WASM will be auto-initialized on first use
@@ -557,11 +567,15 @@ export class ConfidentialTransferClient {
       let txOverrides;
 
       if (this.config.chainId === 42431) {
-        // Tempo: upload proof to IPFS and pass an ipfs:// pointer; no native fee
+        // Tempo: upload proof to StableTrust IPFS and pass an ipfs:// pointer; no native fee
         try {
           const cid = await uploadBytesToIpfs(
             encodedProof,
             "transfer-proof.bin",
+            {
+              uploadUrl: this.config.ipfsUploadUrl,
+              apiKey: this.config.ipfsApiKey,
+            },
           );
           transferZkpArg = ethers.toUtf8Bytes(`ipfs://${cid}`);
         } catch (ipfsError) {
@@ -721,11 +735,15 @@ export class ConfidentialTransferClient {
       let withdrawZkpArg;
 
       if (this.config.chainId === 42431) {
-        // Tempo: upload proof to IPFS and pass an ipfs:// pointer
+        // Tempo: upload proof to StableTrust IPFS and pass an ipfs:// pointer
         try {
           const cid = await uploadBytesToIpfs(
             encodedProof,
             "withdraw-proof.bin",
+            {
+              uploadUrl: this.config.ipfsUploadUrl,
+              apiKey: this.config.ipfsApiKey,
+            },
           );
           withdrawZkpArg = ethers.toUtf8Bytes(`ipfs://${cid}`);
         } catch (ipfsError) {

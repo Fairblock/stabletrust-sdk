@@ -1,7 +1,4 @@
 import { ethers } from "ethers";
-// Pinata uploads API endpoint
-// Docs: https://docs.pinata.cloud
-const PINATA_UPLOAD_URL = "https://uploads.pinata.cloud/v3/files";
 
 // Anonymous account ID constraints (must match the Fairycloak relay and on-chain contract rules)
 export const MAX_ANONYMOUS_ACCOUNT_ID_LENGTH = 20;
@@ -151,84 +148,126 @@ export async function waitForCondition(
 }
 
 /**
- * Upload a JSON-serializable object to IPFS and return its CID (as a string).
- * The object will be stored as a UTF-8 JSON blob.
+ * Browser-safe environment lookup.
  *
- * @param {any} data - JSON-serializable data to store.
- * @param {string} [jwt] - Pinata JWT. Falls back to `process.env.PINATA_JWT` when omitted.
- * @returns {Promise<string>} The CID string.
+ * @param {string} name - Environment variable name.
+ * @returns {string|undefined}
+ * @private
  */
-export async function uploadJsonToIpfs(data, jwt) {
-  const PINATA_JWT = jwt || process.env.PINATA_JWT;
-  if (!PINATA_JWT) {
-    throw new Error(
-      "Pinata JWT is not set - pass `pinataJwt` in the client config or set PINATA_JWT in the environment",
-    );
+function _env(name) {
+  if (typeof process !== "undefined" && process?.env?.[name]) {
+    return process.env[name];
   }
-
-  const json = JSON.stringify(data);
-  const blob = new Blob([json], { type: "application/json" });
-
-  const form = new FormData();
-  form.append("file", blob, "proof.json");
-  form.append("network", "public");
-  form.append("name", "zk-proof");
-
-  const res = await fetch(PINATA_UPLOAD_URL, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${PINATA_JWT}`,
-    },
-    body: form,
-  });
-
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`Pinata upload failed: ${text}`);
-  }
-
-  const jsonRes = await res.json();
-  return jsonRes?.data?.cid?.toString();
+  return undefined;
 }
 
 /**
- * Upload raw bytes to IPFS (Pinata) and return the CID.
+ * Resolve StableTrust IPFS upload options from explicit options or environment variables.
  *
- * @param {Uint8Array|ArrayBuffer} bytes - Raw proof bytes.
- * @param {string} [name='proof.bin'] - Optional file name metadata.
- * @param {string} [jwt] - Pinata JWT. Falls back to `process.env.PINATA_JWT` when omitted.
- * @returns {Promise<string>} The CID string.
+ * @param {Object} [options]
+ * @param {string} [options.uploadUrl] - StableTrust IPFS upload endpoint.
+ * @param {string} [options.ipfsUploadUrl] - Alias for uploadUrl.
+ * @param {string} [options.apiKey] - Bearer token for upload endpoint.
+ * @param {string} [options.ipfsApiKey] - Alias for apiKey.
+ * @returns {{uploadUrl:string, apiKey:string|null}}
+ * @private
  */
-export async function uploadBytesToIpfs(bytes, name = "proof.bin", jwt) {
-  const PINATA_JWT = jwt || process.env.PINATA_JWT;
-  if (!PINATA_JWT) {
+function _resolveIpfsUploadOptions(options = {}) {
+  const uploadUrl =
+    options.uploadUrl ||
+    options.ipfsUploadUrl ||
+    _env("STABLETRUST_IPFS_UPLOAD_URL");
+
+  if (!uploadUrl) {
     throw new Error(
-      "Pinata JWT is not set - pass `pinataJwt` in the client config or set PINATA_JWT in the environment",
+      "StableTrust IPFS upload URL is not set - pass `ipfsUploadUrl` in the client config or set STABLETRUST_IPFS_UPLOAD_URL",
     );
   }
 
+  return {
+    uploadUrl: String(uploadUrl).trim(),
+    apiKey:
+      options.apiKey ||
+      options.ipfsApiKey ||
+      _env("STABLETRUST_IPFS_API_KEY") ||
+      null,
+  };
+}
+
+/**
+ * Upload a JSON-serializable object to the configured StableTrust IPFS upload endpoint
+ * and return its CID. The object is stored as UTF-8 JSON bytes.
+ *
+ * @param {any} data - JSON-serializable data to store.
+ * @param {Object} [options]
+ * @param {string} [options.uploadUrl] - StableTrust IPFS upload endpoint.
+ * @param {string} [options.apiKey] - Bearer token for upload endpoint.
+ * @returns {Promise<string>} Bare CID string.
+ */
+export async function uploadJsonToIpfs(data, options = {}) {
+  const json = JSON.stringify(data);
+  return uploadBytesToIpfs(new TextEncoder().encode(json), "proof.json", options);
+}
+
+/**
+ * Upload raw proof bytes to the configured StableTrust IPFS upload endpoint and return the bare CID.
+ *
+ * Expected upload endpoint contract:
+ * - POST raw bytes to `uploadUrl`
+ * - `Content-Type: application/octet-stream`
+ * - optional `Authorization: Bearer <apiKey>`
+ * - response JSON contains `{ "cid": "..." }` (also accepts `Hash`/`Cid` for compatibility)
+ *
+ * @param {Uint8Array|ArrayBuffer|Array<number>} bytes - Raw proof bytes.
+ * @param {string} [name='proof.bin'] - Optional proof name, sent as `X-Proof-Name` metadata.
+ * @param {Object} [options]
+ * @param {string} [options.uploadUrl] - StableTrust IPFS upload endpoint.
+ * @param {string} [options.apiKey] - Bearer token for upload endpoint.
+ * @returns {Promise<string>} Bare CID string.
+ */
+export async function uploadBytesToIpfs(bytes, name = "proof.bin", options = {}) {
+  const { uploadUrl, apiKey } = _resolveIpfsUploadOptions(options);
   const uint8 = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
 
-  const blob = new Blob([uint8], { type: "application/octet-stream" });
+  if (uint8.length === 0) {
+    throw new Error("cannot upload an empty proof to IPFS");
+  }
 
-  const form = new FormData();
-  form.append("file", blob, name);
-  form.append("network", "public");
-  form.append("name", name);
+  const headers = {
+    "Content-Type": "application/octet-stream",
+  };
+  if (name) {
+    headers["X-Proof-Name"] = String(name);
+  }
+  if (apiKey) {
+    headers.Authorization = `Bearer ${apiKey}`;
+  }
 
-  const res = await fetch(PINATA_UPLOAD_URL, {
+  const res = await fetch(uploadUrl, {
     method: "POST",
-    headers: {
-      Authorization: `Bearer ${PINATA_JWT}`,
-    },
-    body: form,
+    headers,
+    body: uint8,
   });
 
   if (!res.ok) {
     const text = await res.text();
-    throw new Error(`Pinata upload failed: ${text}`);
+    throw new Error(`StableTrust IPFS upload failed: ${text}`);
   }
 
-  const jsonRes = await res.json();
-  return jsonRes?.data?.cid?.toString();
+  const contentType = res.headers.get("content-type") || "";
+  let cid;
+  if (contentType.includes("application/json")) {
+    const jsonRes = await res.json();
+    cid = jsonRes?.cid ?? jsonRes?.CID ?? jsonRes?.Cid ?? jsonRes?.Hash ?? jsonRes?.hash;
+  } else {
+    cid = await res.text();
+  }
+
+  cid = String(cid || "").trim().replace(/^ipfs:\/\//i, "");
+  if (!cid) {
+    throw new Error("StableTrust IPFS upload returned no CID");
+  }
+
+  return cid;
 }
+

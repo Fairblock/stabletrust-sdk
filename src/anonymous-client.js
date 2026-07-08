@@ -62,10 +62,11 @@ export class AnonymousTransferClient {
    * @param {string} config.rpcUrl - EVM JSON-RPC endpoint (used for on-chain reads and raw-tx signing)
    * @param {string} [config.diamondAddress] - Optional override for the diamond contract address
    * @param {string} [config.apiKey] - Optional Fairycloak API key
-   * @param {string} [config.pinataJwt] - Pinata JWT used to upload proofs to IPFS when a transfer
-   *   sets `offchainZKP: true`. Falls back to `process.env.PINATA_JWT` (Node.js only) when omitted.
+   * @param {string} [config.ipfsUploadUrl] - StableTrust IPFS upload endpoint used when `offchainZKP: true`
+   * @param {string} [config.ipfsApiKey] - Optional bearer token for the StableTrust IPFS upload endpoint
+   * @param {string} [config.ipfsGatewayUrl] - Optional read gateway base URL, e.g. "https://ipfs.example.com"
    */
-  constructor({ fairycloakUrl, diamondAddress, chainId, rpcUrl, apiKey, pinataJwt } = {}) {
+  constructor({ fairycloakUrl, diamondAddress, chainId, rpcUrl, apiKey, ipfsUploadUrl, ipfsApiKey, ipfsGatewayUrl } = {}) {
     if (!fairycloakUrl) throw new Error("fairycloakUrl is required");
     if (!chainId) throw new Error("chainId is required");
     if (!rpcUrl) throw new Error("rpcUrl is required");
@@ -83,7 +84,9 @@ export class AnonymousTransferClient {
     this.chainId = Number(chainId);
     this.rpcUrl = rpcUrl;
     this.apiKey = apiKey || null;
-    this.pinataJwt = pinataJwt || null;
+    this.ipfsUploadUrl = ipfsUploadUrl || null;
+    this.ipfsApiKey = ipfsApiKey || null;
+    this.ipfsGatewayUrl = ipfsGatewayUrl ? ipfsGatewayUrl.replace(/\/$/, "") : null;
 
     this.provider = new ethers.JsonRpcProvider(rpcUrl);
     this._wasmModule = null;
@@ -536,8 +539,9 @@ export class AnonymousTransferClient {
   // ───────────────── off-chain ZKP (IPFS) helpers ─────────────────
 
   /**
-   * Upload ABI-encoded proof bytes to IPFS (Pinata) for an off-chain ZKP transfer and
-   * return the bare CID. With off-chain ZKP, only this CID (<=128 bytes) is placed on-chain;
+   * Upload ABI-encoded proof bytes to the configured StableTrust IPFS upload endpoint for an
+   * off-chain ZKP transfer and return the bare CID. With off-chain ZKP, only this CID
+   * (<=128 bytes) is placed on-chain;
    * Fairyport later fetches the full proof from IPFS and verifies it off-chain.
    *
    * @param {string} proofHex - "0x…" ABI-encoded proof hex (from generateTransferProof)
@@ -547,10 +551,13 @@ export class AnonymousTransferClient {
   async _uploadProofToIpfs(proofHex) {
     if (!proofHex) throw new Error("cannot upload an empty proof to IPFS");
     const bytes = ethers.getBytes(proofHex);
-    const cid = await uploadBytesToIpfs(bytes, "anon-transfer-proof.bin", this.pinataJwt);
+    const cid = await uploadBytesToIpfs(bytes, "anon-transfer-proof.bin", {
+      uploadUrl: this.ipfsUploadUrl,
+      apiKey: this.ipfsApiKey,
+    });
     if (!cid) {
       throw new Error(
-        "IPFS upload returned no CID (check PINATA_JWT and Pinata connectivity)",
+        "IPFS upload returned no CID (check STABLETRUST_IPFS_UPLOAD_URL / STABLETRUST_IPFS_API_KEY)",
       );
     }
     return String(cid).trim();
@@ -1369,7 +1376,7 @@ export class AnonymousTransferClient {
    * @param {string}             [params.proof]          - Pre-computed ZK proof ("0x..." hex)
    * @param {string}             [params.elGamalPrivateKey] - ElGamal private key (base64) for auto-proof
    * @param {boolean}            [params.offchainZKP=false] - When true, upload the proof to IPFS and put
-   *   only its CID on-chain (needs a Pinata JWT via `pinataJwt` config or `PINATA_JWT`)
+   *   only its CID on-chain (needs `ipfsUploadUrl`/`ipfsApiKey` config or the StableTrust IPFS env vars)
    * @param {Object}  [options]
    * @param {number}  [options.deadlineOffset=3600]
    * @returns {Promise<{request_id:string, tx_hash:string, status:string}>}

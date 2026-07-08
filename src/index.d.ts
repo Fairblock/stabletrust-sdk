@@ -14,11 +14,16 @@ declare module "@fairblock/stabletrust" {
     diamondAddress?: string;
     /** Optional API key for Fairycloak */
     apiKey?: string;
-    /**
-     * Optional Pinata JWT, used to upload proofs to IPFS when a transfer sets `offchainZKP: true`.
-     * Falls back to `process.env.PINATA_JWT` (Node.js only) when omitted 
+    /** StableTrust IPFS upload endpoint, used when a transfer sets `offchainZKP: true`.
+     * Falls back to `STABLETRUST_IPFS_UPLOAD_URL` in Node.js when omitted.
      */
-    pinataJwt?: string;
+    ipfsUploadUrl?: string;
+    /** Optional bearer token for the StableTrust IPFS upload endpoint.
+     * Falls back to `STABLETRUST_IPFS_API_KEY` in Node.js when omitted.
+     */
+    ipfsApiKey?: string;
+    /** Optional read gateway base URL, e.g. `https://ipfs.example.com`. */
+    ipfsGatewayUrl?: string;
   }
 
   export interface AnonymousAccountInfo {
@@ -87,8 +92,8 @@ declare module "@fairblock/stabletrust" {
     /** Recipient ElGamal public key (base64). Auto-resolved from the chain if omitted. */
     destinationPublicKey?: string;
     /**
-     * When true, the ZK proof is uploaded to IPFS (Pinata) and only its CID is put on-chain,
-     * instead of sending the full proof inline. Requires a Pinata JWT.
+     * When true, the ZK proof is uploaded to StableTrust IPFS and only its CID is put on-chain,
+     * instead of sending the full proof inline. Requires `ipfsUploadUrl`/`ipfsApiKey` config or the StableTrust IPFS environment variables.
      */
     offchainZKP?: boolean;
   }
@@ -105,8 +110,8 @@ declare module "@fairblock/stabletrust" {
     /** Recipient ElGamal public key (base64). Auto-resolved from the chain if omitted. */
     destinationPublicKey?: string;
     /**
-     * When true, the ZK proof is uploaded to IPFS (Pinata) and only its CID is put on-chain,
-     * instead of sending the full proof inline. Requires a Pinata JWT.
+     * When true, the ZK proof is uploaded to StableTrust IPFS and only its CID is put on-chain,
+     * instead of sending the full proof inline. Requires `ipfsUploadUrl`/`ipfsApiKey` config or the StableTrust IPFS environment variables.
      */
     offchainZKP?: boolean;
   }
@@ -121,9 +126,8 @@ declare module "@fairblock/stabletrust" {
     /** ElGamal private key (base64) for auto-proof generation. Contract scale is derived automatically. */
     elGamalPrivateKey?: string;
     /**
-     * When true, the ZK proof is uploaded to IPFS (Pinata) and only its CID is put on-chain,
-     * instead of sending the full proof inline. Requires a Pinata JWT (see
-     * `AnonymousTransferClientConfig.pinataJwt` or `PINATA_JWT`). Defaults to false.
+     * When true, the ZK proof is uploaded to StableTrust IPFS and only its CID is put on-chain,
+     * instead of sending the full proof inline. Requires `ipfsUploadUrl`/`ipfsApiKey` config or `STABLETRUST_IPFS_UPLOAD_URL` / `STABLETRUST_IPFS_API_KEY`. Defaults to false.
      */
     offchainZKP?: boolean;
   }
@@ -523,6 +527,13 @@ declare module "@fairblock/stabletrust" {
     waitForFinalization?: boolean;
   }
 
+  export interface StableTrustIpfsOptions {
+    /** StableTrust IPFS upload endpoint. Falls back to STABLETRUST_IPFS_UPLOAD_URL in Node.js. */
+    ipfsUploadUrl?: string;
+    /** Optional bearer token for the StableTrust IPFS upload endpoint. Falls back to STABLETRUST_IPFS_API_KEY in Node.js. */
+    ipfsApiKey?: string;
+  }
+
   /**
    * Main SDK client class
    * WASM auto-initializes on first use - no manual initialization required!
@@ -533,7 +544,7 @@ declare module "@fairblock/stabletrust" {
      * @param rpcUrl RPC endpoint URL
      * @param chainId Chain ID (uses default Stabletrust contract for known networks)
      */
-    constructor(rpcUrl: string, chainId: number);
+    constructor(rpcUrl: string, chainId: number, options?: StableTrustIpfsOptions);
 
     /**
      * Create a new ConfidentialTransferClient
@@ -541,7 +552,7 @@ declare module "@fairblock/stabletrust" {
      * @param contractAddress Confidential transfer contract address
      * @param chainId Chain ID
      */
-    constructor(rpcUrl: string, contractAddress: string, chainId: number);
+    constructor(rpcUrl: string, contractAddress: string, chainId: number, options?: StableTrustIpfsOptions);
 
     /**
      * Get account information from the contract

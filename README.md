@@ -369,20 +369,21 @@ const result = await client.withdraw(wallet, accountId, {
 
 ### Off-chain ZKP proofs (IPFS)
 
-By default an anonymous proof is submitted **inline** (in the relay request and as on-chain calldata). For `transferToPublic`, `transferToAnonymous`, and `withdraw` you can instead set **`offchainZKP: true`** to upload the proof to **IPFS (via Pinata)** and put only the resulting **CID** on-chain - Fairyport then fetches the full proof from IPFS and verifies it off-chain. This keeps large (~2.5 KB) proofs out of calldata. The flag is optional and defaults to `false`, so the inline path is unchanged. These proof-carrying methods support it; `deposit` and `applyPending` do not (they carry no ZK proof).
+By default an anonymous proof is submitted **inline** (in the relay request and as on-chain calldata). For `transferToPublic`, `transferToAnonymous`, and `withdraw` you can instead set **`offchainZKP: true`** to upload the proof to **StableTrust self-hosted IPFS** and put only the resulting **CID** on-chain - Fairyport then fetches the full proof from IPFS and verifies it off-chain. This keeps large (~2.5 KB) proofs out of calldata. The flag is optional and defaults to `false`, so the inline path is unchanged. These proof-carrying methods support it; `deposit` and `applyPending` do not (they carry no ZK proof).
 
-**Providing a Pinata JWT.** When `offchainZKP` is enabled the SDK needs a Pinata JWT to pin the proof. Provide it either via the client config (recommended, and required in browsers where `process.env` is unavailable):
+**Providing StableTrust IPFS upload config.** When `offchainZKP` is enabled the SDK uploads proof bytes to the configured StableTrust IPFS upload endpoint. Provide it either via the client config (recommended, and required in browsers where `process.env` is unavailable):
 
 ```javascript
 const client = new AnonymousTransferClient({
   fairycloakUrl: "http://127.0.0.1:8080",
   chainId: 31337,
   rpcUrl: "http://127.0.0.1:8545",
-  pinataJwt: process.env.MY_PINATA_JWT, // your Pinata JWT
+  ipfsUploadUrl: process.env.STABLETRUST_IPFS_UPLOAD_URL,
+  ipfsApiKey: process.env.STABLETRUST_IPFS_API_KEY,
 });
 ```
 
-…or, in Node.js, by setting the `PINATA_JWT` environment variable (used as a fallback when `pinataJwt` is not passed).
+…or, in Node.js, by setting `STABLETRUST_IPFS_UPLOAD_URL` and `STABLETRUST_IPFS_API_KEY` environment variables, used as fallback values when they are not passed in client config.
 
 **Usage** - add the flag to a normal transfer:
 
