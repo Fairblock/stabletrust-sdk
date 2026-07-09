@@ -2,7 +2,7 @@
 
 ## Overview
 
-The stabletrust SDK by Fairblock provides a robust interface for executing confidential and anonymous transfers using homomorphic encryption and zero-knowledge proofs. This package enables developers to integrate confidentiality features directly into their applications, allowing for secure token deposits, private transfers, and withdrawals while maintaining the integrity and auditability of the underlying blockchain transactions.
+The stabletrust SDK by Fairblock provides a robust interface for executing confidential and unlinkable transfers using homomorphic encryption and zero-knowledge proofs. This package enables developers to integrate confidentiality features directly into their applications, allowing for secure token deposits, private transfers, and withdrawals while maintaining the integrity and auditability of the underlying blockchain transactions.
 
 For a comprehensive technical understanding of the architecture and cryptographic primitives, please refer to the following documentation:
 
@@ -43,7 +43,7 @@ The SDK ships two clients that serve different privacy models:
 | **Identity**       | On-chain wallet address is visible               | Account ID only — wallet address is hidden                   |
 | **Gas**            | User pays gas for all transactions               | Fairycloak relay pays gas (except deposit)                   |
 | **Setup**          | Direct RPC connection                            | Requires a running Fairycloak relay server                   |
-| **Recipient**      | Must have a confidential account                 | Can receive to another anonymous account or a public address |
+| **Recipient**      | Must have a confidential account                 | Can receive to another unlinkable account or a public address |
 | **Key management** | Keys auto-derived from wallet signature          | Keys derived per-account; store the private key yourself     |
 | **Best for**       | Privacy over balances/amounts with known senders | Full sender anonymity                                        |
 
@@ -51,7 +51,7 @@ The SDK ships two clients that serve different privacy models:
 
 Transactions are submitted on-chain directly from your wallet. The **amount and balance are encrypted** (hidden), but the **sender's address is visible** on-chain. Ideal when you want confidential balances without hiding your identity.
 
-### `AnonymousTransferClient` — Anonymous Transfers
+### `AnonymousTransferClient` — Unlinkable Transfers
 
 Transactions are routed through the **Fairycloak relay**, which submits them on-chain and pays gas. The sender's wallet address is **never revealed** on-chain — only a numeric account ID is associated with the transfer. Use this client when full sender anonymity is required.
 
@@ -232,11 +232,11 @@ Returns the public ERC-20 balance for an address.
 
 ## AnonymousTransferClient
 
-The `AnonymousTransferClient` routes all operations through the **Fairycloak relay server**. The relay submits transactions on-chain and pays gas on your behalf (except for deposits, which require the user to pay). Your wallet address is never revealed — only a numeric anonymous account ID appears on-chain.
+The `AnonymousTransferClient` routes all operations through the **Fairycloak relay server**. The relay submits transactions on-chain and pays gas on your behalf (except for deposits, which require the user to pay). Your wallet address is never revealed — only a numeric unlinkable account ID appears on-chain.
 
-> **Access Required** — Anonymous transfers are available to teams building privacy-critical applications. To obtain a Fairycloak relay URL and API key, reach out to the Fairblock team at [hello@fairblock.network](mailto:hello@fairblock.network).
+> **Access Required** — Unlinkable transfers are available to teams building privacy-critical applications. To obtain a Fairycloak relay URL and API key, reach out to the Fairblock team at [hello@fairblock.network](mailto:hello@fairblock.network).
 
-### Anonymous Account ID Rules
+### Unlinkable Account ID Rules
 
 Every `accountId` (and `senderAccountId` / `recipientId`) you pass to `AnonymousTransferClient` must follow these rules, enforced both on-chain and by the Fairycloak relay:
 
@@ -261,7 +261,7 @@ const client = new AnonymousTransferClient({
 
 ### Key Derivation
 
-Anonymous accounts use a per-account ElGamal keypair derived from a wallet signature. **Store the returned `privateKey` securely** — it cannot be recovered without the original wallet and account ID.
+Unlinkable accounts use a per-account ElGamal keypair derived from a wallet signature. **Store the returned `privateKey` securely** — it cannot be recovered without the original wallet and account ID.
 
 ```javascript
 const keys = await client.deriveAnonymousKeys(authWallet, accountId);
@@ -273,13 +273,13 @@ const keys = await client.deriveAnonymousKeys(authWallet, accountId);
 
 #### `createAccount(authWallet, accountId, elgamalPublicKey, options?)`
 
-Creates a new anonymous account via the relay. The relay pays gas. `accountId` is a **caller-chosen string** — pick any unique identifier you like (e.g. a short UUID fragment or a human-readable name), as long as it follows the [Anonymous Account ID Rules](#anonymous-account-id-rules) above (non-empty, at most 20 characters, alphanumeric only, case-sensitive).
+Creates a new unlinkable account via the relay. The relay pays gas. `accountId` is a **caller-chosen string** — pick any unique identifier you like (e.g. a short UUID fragment or a human-readable name), as long as it follows the [Unlinkable Account ID Rules](#unlinkable-account-id-rules) above (non-empty, at most 20 characters, alphanumeric only, case-sensitive).
 
 #### `ensureAnonymousAccount(authWallet, accountId, elgamalPublicKey, options?)`
 
-Idempotent helper that creates the anonymous account if it doesn't already exist, and (by default) waits until it has settled (no pending CW→EVM action) before returning. If an account with `accountId` already exists on-chain, account creation is skipped entirely — safe to call on every run with a stable `accountId`.
+Idempotent helper that creates the unlinkable account if it doesn't already exist, and (by default) waits until it has settled (no pending CW→EVM action) before returning. If an account with `accountId` already exists on-chain, account creation is skipped entirely — safe to call on every run with a stable `accountId`.
 
-> Note: an auth signer can only ever be bound to a single anonymous account, so reusing a wallet across different `accountId`s will fail at creation time even via `ensureAnonymousAccount`.
+> Note: an auth signer can only ever be bound to a single unlinkable account, so reusing a wallet across different `accountId`s will fail at creation time even via `ensureAnonymousAccount`.
 
 ```javascript
 const { accountId, accountInfo, created } = await client.ensureAnonymousAccount(
@@ -294,7 +294,7 @@ const { accountId, accountInfo, created } = await client.ensureAnonymousAccount(
 
 #### `updateAuthKeys(authWallet, accountId, { add, remove }, options?)`
 
-Adds or removes authorised signers for an anonymous account. Pass `ethers.Wallet` instances or raw uncompressed hex pubkey strings.
+Adds or removes authorised signers for an unlinkable account. Pass `ethers.Wallet` instances or raw uncompressed hex pubkey strings.
 
 #### `getAnonymousAccountInfo(accountId)`
 
@@ -318,7 +318,7 @@ Returns decrypted balances including raw ciphertexts — useful when you need th
 
 #### `deposit(authWallet, accountId, tokenAddress, amount, options?)`
 
-Deposits tokens into an anonymous account. The **user pays gas** for this operation. Handles ERC-20 approval automatically.
+Deposits tokens into an unlinkable account. The **user pays gas** for this operation. Handles ERC-20 approval automatically.
 
 ```javascript
 const result = await client.deposit(
@@ -332,7 +332,7 @@ await client.waitForRequest(result.request_id);
 
 #### `transferToPublic(authWallet, accountId, params, options?)`
 
-Transfers from an anonymous account to a public EVM address. The relay pays gas.
+Transfers from an unlinkable account to a public EVM address. The relay pays gas.
 
 **Auto-proof mode** (recommended):
 
@@ -363,7 +363,7 @@ const result = await client.transferToPublic(wallet, accountId, {
 
 #### `transferToAnonymous(authWallet, senderAccountId, params, options?)`
 
-Transfers between two anonymous accounts. The relay pays gas.
+Transfers between two unlinkable accounts. The relay pays gas.
 
 ```javascript
 const result = await client.transferToAnonymous(wallet, senderAccountId, {
@@ -376,11 +376,11 @@ const result = await client.transferToAnonymous(wallet, senderAccountId, {
 
 #### `applyPending(authWallet, accountId, options?)`
 
-Moves a pending incoming balance into available. Must be called after receiving an anonymous-to-anonymous transfer. The relay pays gas.
+Moves a pending incoming balance into available. Must be called after receiving an unlinkable-to-unlinkable transfer. The relay pays gas.
 
 #### `withdraw(authWallet, accountId, params, options?)`
 
-Withdraws from an anonymous account to a public EVM address. The relay pays gas.
+Withdraws from an unlinkable account to a public EVM address. The relay pays gas.
 
 ```javascript
 const result = await client.withdraw(wallet, accountId, {
@@ -393,7 +393,7 @@ const result = await client.withdraw(wallet, accountId, {
 
 ### Off-chain ZKP proofs (IPFS)
 
-By default an anonymous proof is submitted **inline** through the Fairycloak relay. For `transferToPublic`, `transferToAnonymous`, and `withdraw` you can instead set **`offchainZKP: true`** to upload the proof to **StableTrust self-hosted IPFS** and put only the resulting **CID** on-chain. Fairycloak/Fairyport then fetches the full proof from IPFS and forwards the actual proof bytes to the CosmWasm contract. This keeps large (~2.5 KB) proofs out of calldata. The flag is optional and defaults to `false`, so the inline path is unchanged. These proof-carrying methods support it; `deposit` and `applyPending` do not (they carry no ZK proof).
+By default an unlinkable proof is submitted **inline** through the Fairycloak relay. For `transferToPublic`, `transferToAnonymous`, and `withdraw` you can instead set **`offchainZKP: true`** to upload the proof to **StableTrust self-hosted IPFS** and put only the resulting **CID** on-chain. Fairycloak/Fairyport then fetches the full proof from IPFS and forwards the actual proof bytes to the CosmWasm contract. This keeps large (~2.5 KB) proofs out of calldata. The flag is optional and defaults to `false`, so the inline path is unchanged. These proof-carrying methods support it; `deposit` and `applyPending` do not (they carry no ZK proof).
 
 **Providing StableTrust IPFS upload config.** When `offchainZKP` is enabled the SDK uploads proof bytes to the configured StableTrust IPFS upload endpoint. Provide it either via the client config (recommended, and required in browsers where `process.env` is unavailable):
 
@@ -412,7 +412,7 @@ const client = new AnonymousTransferClient({
 **Usage** - add the flag to a normal transfer:
 
 ```javascript
-// anonymous -> anonymous; proof stored on IPFS, CID on-chain
+// unlinkable -> unlinkable; proof stored on IPFS, CID on-chain
 await client.transferToAnonymous(wallet, "alice", {
   recipientId: "bob",
   token: tokenAddress,
@@ -421,7 +421,7 @@ await client.transferToAnonymous(wallet, "alice", {
   offchainZKP: true,
 });
 
-// anonymous -> public EVM address
+// unlinkable -> public EVM address
 await client.transferToPublic(wallet, "alice", {
   recipient: "0xRecipientAddress",
   token: tokenAddress,
@@ -452,15 +452,15 @@ Returns the currently configured ERC-20 fee token address (checksummed). `deposi
 
 #### `getFeeAmount()`
 
-Returns the protocol fee amount (in raw ERC-20 units of the fee token) deducted from the prepaid reserve on each anonymous transfer. Returns `0n` if no fee is configured.
+Returns the protocol fee amount (in raw ERC-20 units of the fee token) deducted from the prepaid reserve on each unlinkable transfer. Returns `0n` if no fee is configured.
 
 #### `getPrepaidFeeBalance(accountId, token)`
 
-Returns the prepaid fee balance (in raw ERC-20 units) for an anonymous account and a given fee token.
+Returns the prepaid fee balance (in raw ERC-20 units) for an unlinkable account and a given fee token.
 
 #### `depositFees(authWallet, accountId, amount, options?)`
 
-Deposits tokens into the prepaid fee reserve for an anonymous account. **The user pays gas** for this operation (mirrors `deposit()`). Handles ERC-20 approval against the active fee token automatically.
+Deposits tokens into the prepaid fee reserve for an unlinkable account. **The user pays gas** for this operation (mirrors `deposit()`). Handles ERC-20 approval against the active fee token automatically.
 
 ```javascript
 const feeToken = await client.getFeeToken();
@@ -550,7 +550,7 @@ const withdrawAmount = ethers.parseUnits("2", tokenDecimals);
 await client.withdraw(wallet, tokenAddress, withdrawAmount);
 ```
 
-### Anonymous Flow (AnonymousTransferClient)
+### Unlinkable Flow (AnonymousTransferClient)
 
 ```javascript
 import { AnonymousTransferClient } from "@fairblock/stabletrust";
@@ -654,7 +654,7 @@ try {
 | "Account finalization timeout"     | Account creation is still processing                                  | Wait a few minutes and retry                                                                                        |
 | "Proof generation failed"          | Invalid inputs or cryptographic operation error                       | Verify all parameters and ensure sufficient balance                                                                 |
 | "Amount too small"                 | Amount rounds to 0 in contract scale                                  | Use a larger amount (minimum depends on token decimals)                                                             |
-| "Insufficient prepaid fee balance" | Anonymous account's prepaid fee reserve is below the per-transfer fee | Call `depositFees(wallet, accountId, amount)` to top up; use `getFeeToken()`/`getFeeAmount()` to check requirements |
+| "Insufficient prepaid fee balance" | Unlinkable account's prepaid fee reserve is below the per-transfer fee | Call `depositFees(wallet, accountId, amount)` to top up; use `getFeeToken()`/`getFeeAmount()` to check requirements |
 | Fairycloak HTTP error              | Relay unreachable or request rejected                                 | Check the relay URL, API key, and account authorization                                                             |
 
 ---
@@ -666,7 +666,7 @@ When using the stabletrust SDK, follow these best practices to ensure the securi
 1. **Private Key Management**
    - Never expose or log private keys or seed phrases
    - Store private keys securely (e.g., hardware wallets, encrypted vaults)
-   - Anonymous account `privateKey` values are sensitive — treat them the same as wallet private keys
+   - Unlinkable account `privateKey` values are sensitive — treat them the same as wallet private keys
 
 2. **Signer Security**
    - Use secure signer implementations (e.g., hardware wallets, encrypted key stores)
@@ -684,7 +684,7 @@ When using the stabletrust SDK, follow these best practices to ensure the securi
 
 5. **Balance Verification**
    - Check available balance before initiating transfers
-   - Anonymous transfers between anonymous accounts require `applyPending()` before the recipient can spend
+   - Unlinkable transfers between unlinkable accounts require `applyPending()` before the recipient can spend
 
 6. **Error Handling**
    - Implement comprehensive error handling for all SDK operations
