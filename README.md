@@ -116,14 +116,38 @@ const arcClient = new ConfidentialTransferClient(
   5042002,
 );
 
-// Tempo (special fee handling via IPFS proof upload)
+// Tempo (defaults to offchainZKP/IPFS proof upload)
 const tempoClient = new ConfidentialTransferClient(
   "https://tempo-rpc.example.com",
   42431,
 );
 ```
 
-**Note on Tempo Chain**: The Tempo network (chainId 42431) uploads ZK proofs to IPFS instead of passing them as calldata. The SDK handles this automatically.
+**Note on off-chain ZKP/IPFS proofs**: The latest confidential-transfer contract exposes `transferConfidential(address,address,bytes,bool)` and `withdraw(address,uint256,bytes,bool)`. By default the SDK submits inline ABI-encoded proof bytes with `offchainZKP=false`. Set `offchainZKP: true` on `confidentialTransfer` or `withdraw` to upload the ABI-encoded proof bytes to StableTrust IPFS and put only the bare CID bytes on-chain. Tempo (chainId 42431) keeps the old SDK behaviour and defaults to `offchainZKP=true`; pass `{ offchainZKP: false }` to force inline proofs.
+
+```javascript
+const client = new ConfidentialTransferClient(rpcUrl, chainId, {
+  ipfsUploadUrl: process.env.STABLETRUST_IPFS_UPLOAD_URL,
+  ipfsApiKey: process.env.STABLETRUST_IPFS_API_KEY,
+});
+
+await client.confidentialTransfer(
+  signer,
+  recipientAddress,
+  tokenAddress,
+  amountToTransfer,
+  { offchainZKP: true },
+);
+
+await client.withdraw(
+  signer,
+  tokenAddress,
+  amountToWithdraw,
+  { offchainZKP: true },
+);
+```
+
+The deprecated option name `useOffchainVerify` is still accepted as an alias for `offchainZKP`.
 
 ### Token Denomination
 
@@ -369,7 +393,7 @@ const result = await client.withdraw(wallet, accountId, {
 
 ### Off-chain ZKP proofs (IPFS)
 
-By default an anonymous proof is submitted **inline** (in the relay request and as on-chain calldata). For `transferToPublic`, `transferToAnonymous`, and `withdraw` you can instead set **`offchainZKP: true`** to upload the proof to **StableTrust self-hosted IPFS** and put only the resulting **CID** on-chain - Fairyport then fetches the full proof from IPFS and verifies it off-chain. This keeps large (~2.5 KB) proofs out of calldata. The flag is optional and defaults to `false`, so the inline path is unchanged. These proof-carrying methods support it; `deposit` and `applyPending` do not (they carry no ZK proof).
+By default an anonymous proof is submitted **inline** through the Fairycloak relay. For `transferToPublic`, `transferToAnonymous`, and `withdraw` you can instead set **`offchainZKP: true`** to upload the proof to **StableTrust self-hosted IPFS** and put only the resulting **CID** on-chain. Fairycloak/Fairyport then fetches the full proof from IPFS and forwards the actual proof bytes to the CosmWasm contract. This keeps large (~2.5 KB) proofs out of calldata. The flag is optional and defaults to `false`, so the inline path is unchanged. These proof-carrying methods support it; `deposit` and `applyPending` do not (they carry no ZK proof).
 
 **Providing StableTrust IPFS upload config.** When `offchainZKP` is enabled the SDK uploads proof bytes to the configured StableTrust IPFS upload endpoint. Provide it either via the client config (recommended, and required in browsers where `process.env` is unavailable):
 

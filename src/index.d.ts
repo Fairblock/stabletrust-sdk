@@ -515,6 +515,14 @@ declare module "@fairblock/stabletrust" {
    * Transfer options
    */
   export interface TransferOptions {
+    /**
+     * When true, upload the ABI-encoded transfer proof to StableTrust IPFS and
+     * submit only the bare CID bytes on-chain with offchainZKP=true.
+     * Defaults to true on Tempo (chainId 42431) for backwards compatibility,
+     * and false on other chains.
+     */
+    offchainZKP?: boolean;
+    /** @deprecated Use offchainZKP instead. */
     useOffchainVerify?: boolean;
     waitForFinalization?: boolean;
   }
@@ -523,6 +531,14 @@ declare module "@fairblock/stabletrust" {
    * Withdraw options
    */
   export interface WithdrawOptions {
+    /**
+     * When true, upload the ABI-encoded withdraw proof to StableTrust IPFS and
+     * submit only the bare CID bytes on-chain with offchainZKP=true.
+     * Defaults to true on Tempo (chainId 42431) for backwards compatibility,
+     * and false on other chains.
+     */
+    offchainZKP?: boolean;
+    /** @deprecated Use offchainZKP instead. */
     useOffchainVerify?: boolean;
     waitForFinalization?: boolean;
   }

@@ -126,6 +126,45 @@ export class ConfidentialTransferClient {
   }
 
   /**
+   * Resolve whether non-anonymous proof bytes should be submitted inline or via
+   * StableTrust IPFS. `offchainZKP` is the latest contract flag;
+   * `useOffchainVerify` is kept as a deprecated SDK alias for older callers.
+   * Tempo keeps the old SDK behaviour of using IPFS by default.
+   * @private
+   */
+  _resolveOffchainZKP(options = {}) {
+    if (options.offchainZKP !== undefined) return Boolean(options.offchainZKP);
+    if (options.useOffchainVerify !== undefined) return Boolean(options.useOffchainVerify);
+    return this.config.chainId === 42431;
+  }
+
+  /**
+   * For the latest contract, public transfer/withdraw always pass
+   * `(bytes proof, bool offchainZKP)`. When `offchainZKP=true`, the bytes arg is
+   * the bare CID encoded as UTF-8 bytes. When false, it is the full ABI proof.
+   * @private
+   */
+  async _resolveContractProofArg(encodedProof, proofName, offchainZKP) {
+    if (!offchainZKP) {
+      return encodedProof;
+    }
+
+    try {
+      const cid = await uploadBytesToIpfs(encodedProof, proofName, {
+        uploadUrl: this.config.ipfsUploadUrl,
+        apiKey: this.config.ipfsApiKey,
+      });
+      const bareCid = String(cid || "").trim().replace(/^ipfs:\/\//i, "");
+      if (!bareCid) {
+        throw new Error("IPFS upload returned no CID");
+      }
+      return ethers.toUtf8Bytes(bareCid);
+    } catch (ipfsError) {
+      throw new Error(`Failed to upload proof to IPFS: ${ipfsError.message}`);
+    }
+  }
+
+  /**
    * Derive encryption keys for a wallet
    *
    * @param {ethers.Wallet|ethers.Signer} wallet - The wallet to derive keys for
@@ -452,6 +491,7 @@ export class ConfidentialTransferClient {
     options = {},
   ) {
     const { waitForFinalization = true } = options;
+    const offchainZKP = this._resolveOffchainZKP(options);
 
     try {
       // Validate inputs
@@ -563,32 +603,12 @@ export class ConfidentialTransferClient {
         );
       }
       const encodedProof = ethers.getBytes(encodeTransferProof(proof.data));
-      let transferZkpArg;
-      let txOverrides;
-
-      if (this.config.chainId === 42431) {
-        // Tempo: upload proof to StableTrust IPFS and pass an ipfs:// pointer; no native fee
-        try {
-          const cid = await uploadBytesToIpfs(
-            encodedProof,
-            "transfer-proof.bin",
-            {
-              uploadUrl: this.config.ipfsUploadUrl,
-              apiKey: this.config.ipfsApiKey,
-            },
-          );
-          transferZkpArg = ethers.toUtf8Bytes(`ipfs://${cid}`);
-        } catch (ipfsError) {
-          throw new Error(
-            `Failed to upload proof to IPFS: ${ipfsError.message}`,
-          );
-        }
-        txOverrides = { value: 0n };
-      } else {
-        // Standard chains: pass encoded proof bytes with native fee
-        transferZkpArg = encodedProof;
-        txOverrides = { value: await this.contract.feeAmount() };
-      }
+      const transferZkpArg = await this._resolveContractProofArg(
+        encodedProof,
+        "transfer-proof.bin",
+        offchainZKP,
+      );
+      const txOverrides = { value: offchainZKP ? 0n : await this.contract.feeAmount() };
 
       const tx = await this.contract
         .connect(senderWallet)
@@ -596,6 +616,7 @@ export class ConfidentialTransferClient {
           recipientAddress,
           tokenAddress,
           transferZkpArg,
+          offchainZKP,
           txOverrides,
         );
 
@@ -633,6 +654,7 @@ export class ConfidentialTransferClient {
    */
   async withdraw(wallet, tokenAddress, amount, options = {}) {
     const { waitForFinalization = true } = options;
+    const offchainZKP = this._resolveOffchainZKP(options);
 
     try {
       // Validate inputs
@@ -732,28 +754,11 @@ export class ConfidentialTransferClient {
 
       // Execute withdrawal
       const encodedProof = ethers.getBytes(encodeWithdrawProof(proof.data));
-      let withdrawZkpArg;
-
-      if (this.config.chainId === 42431) {
-        // Tempo: upload proof to StableTrust IPFS and pass an ipfs:// pointer
-        try {
-          const cid = await uploadBytesToIpfs(
-            encodedProof,
-            "withdraw-proof.bin",
-            {
-              uploadUrl: this.config.ipfsUploadUrl,
-              apiKey: this.config.ipfsApiKey,
-            },
-          );
-          withdrawZkpArg = ethers.toUtf8Bytes(`ipfs://${cid}`);
-        } catch (ipfsError) {
-          throw new Error(
-            `Failed to upload proof to IPFS: ${ipfsError.message}`,
-          );
-        }
-      } else {
-        withdrawZkpArg = encodedProof;
-      }
+      const withdrawZkpArg = await this._resolveContractProofArg(
+        encodedProof,
+        "withdraw-proof.bin",
+        offchainZKP,
+      );
 
       const tx = await this.contract
         .connect(wallet)
@@ -761,6 +766,7 @@ export class ConfidentialTransferClient {
           tokenAddress,
           BigInt(withdrawAmount),
           withdrawZkpArg,
+          offchainZKP,
         );
 
       const receipt = await tx.wait();

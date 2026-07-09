@@ -34,34 +34,62 @@ export function validateAnonymousAccountId(accountId, fieldName = "accountId") {
   }
 }
 /**
- * Encodes the ZK-Proof data for a transfer into a format the Solidity contract expects.
+ * Convert a proof component returned by the WASM/proof generator into the exact
+ * bytes carried inside the contract/Fairyport ABI proof tuple. The current proof
+ * generator returns base64 text for each proof component; these ASCII bytes are
+ * what the Go relayer and CosmWasm contract expect to receive.
+ *
+ * Hex strings are also accepted for callers that provide raw proof component
+ * bytes manually.
+ *
+ * @param {string|Uint8Array|ArrayBuffer|Array<number>} value
+ * @returns {Uint8Array}
+ * @private
+ */
+function _proofPartToBytes(value) {
+  if (value instanceof Uint8Array) return value;
+  if (value instanceof ArrayBuffer) return new Uint8Array(value);
+  if (Array.isArray(value)) return new Uint8Array(value);
+  if (typeof value !== "string" || value.length === 0) {
+    throw new Error("invalid proof component: expected non-empty string or bytes");
+  }
+  if (value.startsWith("0x")) return ethers.getBytes(value);
+  return new TextEncoder().encode(value);
+}
+
+/**
+ * Encodes the ZK-Proof data for a transfer into the format expected by the
+ * latest EVM/Fairyport/CosmWasm flow: abi.encode(bytes equalityProof,
+ * bytes ciphertextValidityProof, bytes rangeProof).
  *
  * @param {Object} proofData - The proof data object
- * @returns {string} Encoded proof bytes
+ * @returns {string} ABI-encoded proof bytes
  */
 export function encodeTransferProof(proofData) {
   const abiCoder = ethers.AbiCoder.defaultAbiCoder();
   return abiCoder.encode(
-    ["string", "string", "string"],
+    ["bytes", "bytes", "bytes"],
     [
-      proofData.equality_proof,
-      proofData.ciphertext_validity_proof,
-      proofData.range_proof,
+      _proofPartToBytes(proofData.equality_proof),
+      _proofPartToBytes(proofData.ciphertext_validity_proof),
+      _proofPartToBytes(proofData.range_proof),
     ],
   );
 }
 
 /**
- * Encodes the ZK-Proof data for a withdrawal.
+ * Encodes the ZK-Proof data for a withdrawal into the format expected by the
+ * latest EVM/Fairyport/CosmWasm flow: abi.encode(bytes equalityProof,
+ * bytes rangeProof).
  *
  * @param {Object} proofData - The proof data object
- * @returns {string} Encoded proof bytes
+ * @returns {string} ABI-encoded proof bytes
  */
 export function encodeWithdrawProof(proofData) {
   const abiCoder = ethers.AbiCoder.defaultAbiCoder();
   return abiCoder.encode(
-    ["string", "string"],
-    [proofData.equality_proof, proofData.range_proof],
+    ["bytes", "bytes"],
+    [_proofPartToBytes(proofData.equality_proof), _proofPartToBytes(proofData.range_proof)],
   );
 }
 
@@ -176,7 +204,8 @@ function _resolveIpfsUploadOptions(options = {}) {
   const uploadUrl =
     options.uploadUrl ||
     options.ipfsUploadUrl ||
-    _env("STABLETRUST_IPFS_UPLOAD_URL");
+    _env("STABLETRUST_IPFS_UPLOAD_URL") ||
+    _env("IPFS_UPLOAD_URL");
 
   if (!uploadUrl) {
     throw new Error(
@@ -190,6 +219,7 @@ function _resolveIpfsUploadOptions(options = {}) {
       options.apiKey ||
       options.ipfsApiKey ||
       _env("STABLETRUST_IPFS_API_KEY") ||
+      _env("IPFS_UPLOAD_API_KEY") ||
       null,
   };
 }
@@ -219,7 +249,7 @@ export async function uploadJsonToIpfs(data, options = {}) {
  * - response JSON contains `{ "cid": "..." }` (also accepts `Hash`/`Cid` for compatibility)
  *
  * @param {Uint8Array|ArrayBuffer|Array<number>} bytes - Raw proof bytes.
- * @param {string} [name='proof.bin'] - Optional proof name, sent as `X-Proof-Name` metadata.
+ * @param {string} [name='proof.bin'] - Optional proof name, sent as `X-StableTrust-Filename` metadata.
  * @param {Object} [options]
  * @param {string} [options.uploadUrl] - StableTrust IPFS upload endpoint.
  * @param {string} [options.apiKey] - Bearer token for upload endpoint.
@@ -237,7 +267,7 @@ export async function uploadBytesToIpfs(bytes, name = "proof.bin", options = {})
     "Content-Type": "application/octet-stream",
   };
   if (name) {
-    headers["X-Proof-Name"] = String(name);
+    headers["X-StableTrust-Filename"] = String(name);
   }
   if (apiKey) {
     headers.Authorization = `Bearer ${apiKey}`;
