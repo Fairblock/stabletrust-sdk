@@ -10,6 +10,8 @@ export {
 export {
   CONTRACT_ABI,
   ERC20_ABI,
+  TRANSFER_CONFIDENTIAL_SIGNATURE,
+  WITHDRAW_CONFIDENTIAL_SIGNATURE,
   STABLETRUST_CONTRACTS_BY_CHAIN_ID,
   getStabletrustContractAddress,
 } from "./constants.js";

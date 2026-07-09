@@ -2,6 +2,8 @@ import { ethers } from "ethers";
 import {
   CONTRACT_ABI,
   ERC20_ABI,
+  TRANSFER_CONFIDENTIAL_SIGNATURE,
+  WITHDRAW_CONFIDENTIAL_SIGNATURE,
   getStabletrustContractAddress,
 } from "./constants.js";
 import { deriveKeys, decryptCiphertext, combineCiphertext } from "./crypto.js";
@@ -99,6 +101,7 @@ export class ConfidentialTransferClient {
         CONTRACT_ABI,
         this.provider,
       );
+      this._assertLatestContractAbi();
     } catch (error) {
       throw new Error(
         `Failed to initialize contracts: ${error.message}. Check your RPC URL and contract addresses.`,
@@ -123,6 +126,23 @@ export class ConfidentialTransferClient {
    */
   _getTokenContract(tokenAddress) {
     return new ethers.Contract(tokenAddress, ERC20_ABI, this.provider);
+  }
+
+  /**
+   * Fail fast when a stale SDK ABI is installed against the latest contract.
+   * This catches the common dependency-lock problem where the contract has
+   * `bytes,bool` proof methods but node_modules still contains the older ABI.
+   * @private
+   */
+  _assertLatestContractAbi() {
+    try {
+      this.contract.interface.getFunction(TRANSFER_CONFIDENTIAL_SIGNATURE);
+      this.contract.interface.getFunction(WITHDRAW_CONFIDENTIAL_SIGNATURE);
+    } catch (error) {
+      throw new Error(
+        `Installed @fairblock/stabletrust ABI is stale or incomplete. Expected ${TRANSFER_CONFIDENTIAL_SIGNATURE} and ${WITHDRAW_CONFIDENTIAL_SIGNATURE}. Reinstall/update the SDK.`,
+      );
+    }
   }
 
   /**
@@ -610,15 +630,13 @@ export class ConfidentialTransferClient {
       );
       const txOverrides = { value: offchainZKP ? 0n : await this.contract.feeAmount() };
 
-      const tx = await this.contract
-        .connect(senderWallet)
-        .transferConfidential(
-          recipientAddress,
-          tokenAddress,
-          transferZkpArg,
-          offchainZKP,
-          txOverrides,
-        );
+      const tx = await this.contract.connect(senderWallet).transferConfidential(
+        recipientAddress,
+        tokenAddress,
+        transferZkpArg,
+        offchainZKP,
+        txOverrides,
+      );
 
       const receipt = await tx.wait();
       if (!receipt || receipt.status === 0) {
@@ -760,14 +778,12 @@ export class ConfidentialTransferClient {
         offchainZKP,
       );
 
-      const tx = await this.contract
-        .connect(wallet)
-        .withdraw(
-          tokenAddress,
-          BigInt(withdrawAmount),
-          withdrawZkpArg,
-          offchainZKP,
-        );
+      const tx = await this.contract.connect(wallet).withdraw(
+        tokenAddress,
+        BigInt(withdrawAmount),
+        withdrawZkpArg,
+        offchainZKP,
+      );
 
       const receipt = await tx.wait();
       if (!receipt || receipt.status === 0) {

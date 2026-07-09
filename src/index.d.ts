@@ -722,6 +722,8 @@ declare module "@fairblock/stabletrust" {
   /**
    * Contract ABI
    */
+  export const TRANSFER_CONFIDENTIAL_SIGNATURE: string;
+  export const WITHDRAW_CONFIDENTIAL_SIGNATURE: string;
   export const CONTRACT_ABI: any[];
 
   /**
