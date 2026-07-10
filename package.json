@@ -28,8 +28,9 @@
     "url": "https://github.com/Fairblock/stabletrust-sdk"
   },
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
-    "check:abi": "node scripts/check-contract-abi.mjs"
+    "test": "node --test test/*.test.mjs",
+    "check:abi": "node scripts/check-contract-abi.mjs",
+    "check": "npm run check:abi && npm test"
   },
   "keywords": [
     "confidential",

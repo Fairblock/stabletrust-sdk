@@ -1104,7 +1104,7 @@ export class AnonymousTransferClient {
         });
       }
 
-      await this._assertSufficientPrepaidFees(accountId);
+      await this._assertSufficientPrepaidFees(accountId, offchainZKP);
 
       const authNonce = await this.getAuthNonce(accountId);
       const deadline = this._makeDeadline(deadlineOffset);
@@ -1258,7 +1258,7 @@ export class AnonymousTransferClient {
         });
       }
 
-      await this._assertSufficientPrepaidFees(senderAccountId);
+      await this._assertSufficientPrepaidFees(senderAccountId, offchainZKP);
 
       const authNonce = await this.getAuthNonce(senderAccountId);
       const deadline = this._makeDeadline(deadlineOffset);
@@ -1570,24 +1570,49 @@ export class AnonymousTransferClient {
   }
 
   /**
-   * Get the currently configured protocol fee amount (in raw ERC-20 units of the fee token).
+   * Get the fixed fee used by all non-anonymous confidential transfers.
    *
-   * This is the amount deducted from the prepaid reserve on each anonymous transfer.
-   * Returns 0n if no fee is configured.
-   *
-   * @returns {Promise<bigint>}
+   * @returns {Promise<bigint>} Fee amount in raw fee-token units
    */
-  async getFeeAmount() {
+  async getNonAnonymousTransferFee() {
     try {
-      const data = await this._fetch("GET", "/v1/views/fee-amount");
+      const data = await this._fetch("GET", "/v1/views/fees/non-anonymous");
       return _parseBigInt(data.result ?? data);
     } catch (e) {
-      throw new Error(`Failed to get fee amount: ${e.message}`);
+      throw new Error(`Failed to get non-anonymous transfer fee: ${e.message}`);
     }
   }
 
   /**
-   * Get the prepaid fee balance for an anonymous account and token (in raw ERC-20 units).
+   * Get the fixed fee used by anonymous transfers with proofs stored on IPFS.
+   *
+   * @returns {Promise<bigint>} Fee amount in raw fee-token units
+   */
+  async getAnonymousIpfsTransferFee() {
+    try {
+      const data = await this._fetch("GET", "/v1/views/fees/anonymous-ipfs");
+      return _parseBigInt(data.result ?? data);
+    } catch (e) {
+      throw new Error(`Failed to get anonymous IPFS transfer fee: ${e.message}`);
+    }
+  }
+
+  /**
+   * Get the fixed fee used by anonymous transfers with proofs submitted inline.
+   *
+   * @returns {Promise<bigint>} Fee amount in raw fee-token units
+   */
+  async getAnonymousInlineTransferFee() {
+    try {
+      const data = await this._fetch("GET", "/v1/views/fees/anonymous-inline");
+      return _parseBigInt(data.result ?? data);
+    } catch (e) {
+      throw new Error(`Failed to get anonymous inline transfer fee: ${e.message}`);
+    }
+  }
+
+  /**
+   * Get the prepaid fee balance for an anonymous account and token (in raw fee-token units).
    *
    * @param {string} accountId
    * @param {string} token - ERC-20 token address (use `getFeeToken()` to get the active fee token)
@@ -1613,21 +1638,25 @@ export class AnonymousTransferClient {
    * Throws a descriptive error if the balance is insufficient.
    * @private
    */
-  async _assertSufficientPrepaidFees(accountId) {
+  async _assertSufficientPrepaidFees(accountId, offchainZKP) {
+    const feePromise = offchainZKP
+      ? this.getAnonymousIpfsTransferFee()
+      : this.getAnonymousInlineTransferFee();
     const [feeToken, feeAmount] = await Promise.all([
       this.getFeeToken(),
-      this.getFeeAmount(),
+      feePromise,
     ]);
-    if (feeAmount === 0n) return; // no fee configured
+    if (feeAmount === 0n) return; // no fee configured for this path
 
     const balance = await this.getPrepaidFeeBalance(accountId, feeToken);
     if (balance < feeAmount) {
+      const path = offchainZKP ? "IPFS" : "inline";
       throw new Error(
-        `Insufficient prepaid fee balance for anonymous account "${accountId}". ` +
+        `Insufficient prepaid fee balance for anonymous account "${accountId}" (${path} transfer). ` +
           `Required: ${feeAmount} (raw units of fee token ${feeToken}), ` +
           `available: ${balance}. ` +
           `Call depositFees(wallet, accountId, amount) to top up the prepaid fee reserve. ` +
-          `Use getFeeToken() to get the active fee token address and getFeeAmount() to see the required deposit amount per transfer.`,
+          `Use getFeeToken() and the matching anonymous fee getter to check the required amount.`,
       );
     }
   }
@@ -1649,7 +1678,7 @@ export class AnonymousTransferClient {
    *
    * @param {ethers.Wallet} authWallet - Wallet that owns the tokens and pays gas
    * @param {string} accountId - Target anonymous account ID
-   * @param {bigint|string|number} amount - Amount in raw ERC-20 units of the active fee token
+   * @param {bigint|string|number} amount - Amount in raw fee-token units (wei for native currency)
    * @param {Object} [options]
    * @param {number}  [options.deadlineOffset=3600]
    * @param {bigint}  [options.gasLimit=300000n]

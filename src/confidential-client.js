@@ -4,6 +4,10 @@ import {
   ERC20_ABI,
   TRANSFER_CONFIDENTIAL_SIGNATURE,
   WITHDRAW_CONFIDENTIAL_SIGNATURE,
+  FEE_TOKEN_SIGNATURE,
+  NON_ANONYMOUS_TRANSFER_FEE_SIGNATURE,
+  ANONYMOUS_IPFS_TRANSFER_FEE_SIGNATURE,
+  ANONYMOUS_INLINE_TRANSFER_FEE_SIGNATURE,
   getStabletrustContractAddress,
 } from "./constants.js";
 import { deriveKeys, decryptCiphertext, combineCiphertext } from "./crypto.js";
@@ -135,12 +139,21 @@ export class ConfidentialTransferClient {
    * @private
    */
   _assertLatestContractAbi() {
-    try {
-      this.contract.interface.getFunction(TRANSFER_CONFIDENTIAL_SIGNATURE);
-      this.contract.interface.getFunction(WITHDRAW_CONFIDENTIAL_SIGNATURE);
-    } catch (error) {
+    const requiredSignatures = [
+      TRANSFER_CONFIDENTIAL_SIGNATURE,
+      WITHDRAW_CONFIDENTIAL_SIGNATURE,
+      FEE_TOKEN_SIGNATURE,
+      NON_ANONYMOUS_TRANSFER_FEE_SIGNATURE,
+      ANONYMOUS_IPFS_TRANSFER_FEE_SIGNATURE,
+      ANONYMOUS_INLINE_TRANSFER_FEE_SIGNATURE,
+    ];
+
+    const missingSignatures = requiredSignatures.filter(
+      (signature) => !this.contract.interface.getFunction(signature),
+    );
+    if (missingSignatures.length > 0) {
       throw new Error(
-        `Installed @fairblock/stabletrust ABI is stale or incomplete. Expected ${TRANSFER_CONFIDENTIAL_SIGNATURE} and ${WITHDRAW_CONFIDENTIAL_SIGNATURE}. Reinstall/update the SDK.`,
+        `Installed @fairblock/stabletrust ABI is stale or incomplete. Missing ${missingSignatures.join(", ")}. Reinstall/update the SDK.`,
       );
     }
   }
@@ -156,6 +169,56 @@ export class ConfidentialTransferClient {
     if (options.offchainZKP !== undefined) return Boolean(options.offchainZKP);
     if (options.useOffchainVerify !== undefined) return Boolean(options.useOffchainVerify);
     return this.config.chainId === 42431;
+  }
+
+  /**
+   * Prepare payment for a non-anonymous confidential transfer. Both inline and
+   * IPFS proof paths use the same live `nonAnonymousTransferFee`. Native fees
+   * are attached as msg.value; ERC-20 fees are approved for the diamond and
+   * collected by the contract with transferFrom.
+   * @private
+   */
+  async _prepareNonAnonymousTransferFee(senderWallet) {
+    const [feeTokenRaw, feeAmountRaw] = await Promise.all([
+      this.contract.feeToken(),
+      this.contract.nonAnonymousTransferFee(),
+    ]);
+
+    const feeToken = ethers.getAddress(feeTokenRaw);
+    const feeAmount = BigInt(feeAmountRaw);
+
+    if (feeAmount === 0n) {
+      return { value: 0n };
+    }
+
+    if (feeToken === ethers.ZeroAddress) {
+      return { value: feeAmount };
+    }
+
+    const senderAddress = await senderWallet.getAddress();
+    const feeTokenContract = this._getTokenContract(feeToken);
+    const [balance, allowance] = await Promise.all([
+      feeTokenContract.balanceOf(senderAddress),
+      feeTokenContract.allowance(senderAddress, this.config.contractAddress),
+    ]);
+
+    if (balance < feeAmount) {
+      throw new Error(
+        `Insufficient fee token balance. Required: ${feeAmount}, available: ${balance}, fee token: ${feeToken}`,
+      );
+    }
+
+    if (allowance < feeAmount) {
+      const approveTx = await feeTokenContract
+        .connect(senderWallet)
+        .approve(this.config.contractAddress, ethers.MaxUint256);
+      const approveReceipt = await approveTx.wait();
+      if (!approveReceipt || approveReceipt.status === 0) {
+        throw new Error("Fee token approval failed");
+      }
+    }
+
+    return { value: 0n };
   }
 
   /**
@@ -628,7 +691,7 @@ export class ConfidentialTransferClient {
         "transfer-proof.bin",
         offchainZKP,
       );
-      const txOverrides = { value: offchainZKP ? 0n : await this.contract.feeAmount() };
+      const txOverrides = await this._prepareNonAnonymousTransferFee(senderWallet);
 
       const tx = await this.contract.connect(senderWallet).transferConfidential(
         recipientAddress,
@@ -879,15 +942,55 @@ export class ConfidentialTransferClient {
   }
 
   /**
-   * Get the current fee amount for confidential transfers
+   * Get the currently configured fee token. address(0) means native currency.
    *
-   * @returns {Promise<bigint>} Fee amount in wei
+   * @returns {Promise<string>} Checksummed token address
    */
-  async getFeeAmount() {
+  async getFeeToken() {
     try {
-      return await this.contract.feeAmount();
+      return ethers.getAddress(await this.contract.feeToken());
     } catch (error) {
-      throw new Error(`Failed to get fee amount: ${error.message}`);
+      throw new Error(`Failed to get fee token: ${error.message}`);
+    }
+  }
+
+  /**
+   * Get the fixed fee used by all non-anonymous confidential transfers,
+   * regardless of whether the proof is inline or stored on IPFS.
+   *
+   * @returns {Promise<bigint>} Fee amount in raw fee-token units
+   */
+  async getNonAnonymousTransferFee() {
+    try {
+      return await this.contract.nonAnonymousTransferFee();
+    } catch (error) {
+      throw new Error(`Failed to get non-anonymous transfer fee: ${error.message}`);
+    }
+  }
+
+  /**
+   * Get the fixed fee used by anonymous transfers whose proof is stored on IPFS.
+   *
+   * @returns {Promise<bigint>} Fee amount in raw fee-token units
+   */
+  async getAnonymousIpfsTransferFee() {
+    try {
+      return await this.contract.anonymousIpfsTransferFee();
+    } catch (error) {
+      throw new Error(`Failed to get anonymous IPFS transfer fee: ${error.message}`);
+    }
+  }
+
+  /**
+   * Get the fixed fee used by anonymous transfers whose proof is submitted inline.
+   *
+   * @returns {Promise<bigint>} Fee amount in raw fee-token units
+   */
+  async getAnonymousInlineTransferFee() {
+    try {
+      return await this.contract.anonymousInlineTransferFee();
+    } catch (error) {
+      throw new Error(`Failed to get anonymous inline transfer fee: ${error.message}`);
     }
   }
 

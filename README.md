@@ -210,7 +210,7 @@ Deposits ERC-20 tokens into the confidential contract. Handles ERC-20 approval a
 
 #### `confidentialTransfer(senderWallet, recipientAddress, tokenAddress, amount, options?)`
 
-Transfers a confidential amount to a recipient. The recipient must have an existing confidential account.
+Transfers a confidential amount to a recipient. The recipient must have an existing confidential account. Both inline and IPFS proof paths use the same live non-anonymous transfer fee. The SDK reads the active fee configuration automatically: native fees are attached as `msg.value`, while ERC-20 fees are approved for the diamond when necessary.
 
 - **Returns**: Transaction receipt.
 
@@ -220,9 +220,14 @@ Withdraws from the confidential available balance back to public ERC-20.
 
 - **Returns**: Transaction receipt.
 
-#### `getFeeAmount()`
+#### Fee configuration getters
 
-Returns the native fee (in wei) required for confidential transfers on the current chain.
+- `getFeeToken()` returns the active fee token; `ethers.ZeroAddress` means native currency.
+- `getNonAnonymousTransferFee()` returns the fixed fee used by both inline and IPFS non-anonymous transfers.
+- `getAnonymousIpfsTransferFee()` returns the fixed anonymous IPFS-path fee.
+- `getAnonymousInlineTransferFee()` returns the fixed anonymous inline-path fee.
+
+All amounts are returned as raw units of the active fee token.
 
 #### `getPublicBalance(address, tokenAddress)`
 
@@ -444,30 +449,37 @@ In manual-proof mode (when you pass a pre-computed `proof`) with `offchainZKP: t
 
 ### Prepaid Fees
 
-Every `transferToPublic` and `transferToAnonymous` call deducts a protocol fee from the sender account's **prepaid fee reserve**. The SDK checks this balance before submitting a transfer and throws a descriptive error if it's insufficient — top up the reserve with `depositFees` before transferring.
+Every `transferToPublic` and `transferToAnonymous` call deducts a protocol fee from the sender account's **prepaid fee reserve**. Inline transfers use `anonymousInlineTransferFee`; IPFS transfers use `anonymousIpfsTransferFee`. The SDK checks the matching live fee before submitting a transfer and throws a descriptive error if the reserve is insufficient.
 
 #### `getFeeToken()`
 
-Returns the currently configured ERC-20 fee token address (checksummed). `depositFees` deposits must use this token. The fee token can be rotated by the protocol over time, but existing balances in old fee tokens remain withdrawable.
+Returns the currently configured fee token address (checksummed). `ethers.ZeroAddress` represents native currency. `depositFees` deposits must use this token. The fee token can be rotated by the protocol over time, but existing balances in old fee tokens remain withdrawable.
 
-#### `getFeeAmount()`
+#### Anonymous transfer fee getters
 
-Returns the protocol fee amount (in raw ERC-20 units of the fee token) deducted from the prepaid reserve on each unlinkable transfer. Returns `0n` if no fee is configured.
+- `getAnonymousInlineTransferFee()` returns the fee deducted for an inline anonymous transfer.
+- `getAnonymousIpfsTransferFee()` returns the fee deducted for an IPFS anonymous transfer.
+- `getNonAnonymousTransferFee()` exposes the shared non-anonymous fee through Fairycloak's view API.
+
+Each getter returns raw units of the active fee token and returns `0n` when that pathway has no configured fee.
 
 #### `getPrepaidFeeBalance(accountId, token)`
 
-Returns the prepaid fee balance (in raw ERC-20 units) for an unlinkable account and a given fee token.
+Returns the prepaid fee balance in raw units of the selected fee token. For native currency reserves, the amount is in wei.
 
 #### `depositFees(authWallet, accountId, amount, options?)`
 
 Deposits tokens into the prepaid fee reserve for an unlinkable account. **The user pays gas** for this operation (mirrors `deposit()`). Handles ERC-20 approval against the active fee token automatically.
 
 ```javascript
+const offchainZKP = true;
 const feeToken = await client.getFeeToken();
-const feeAmount = await client.getFeeAmount();
+const inlineFee = await client.getAnonymousInlineTransferFee();
+const ipfsFee = await client.getAnonymousIpfsTransferFee();
+const requiredFee = offchainZKP ? ipfsFee : inlineFee;
 const feeBalance = await client.getPrepaidFeeBalance(accountId, feeToken);
 
-if (feeBalance < feeAmount) {
+if (feeBalance < requiredFee) {
   const result = await client.depositFees(
     wallet,
     accountId,
@@ -590,9 +602,9 @@ console.log("Available:", balance.available, "Pending:", balance.pending);
 // 4. Top up the prepaid fee reserve if needed (user pays gas)
 // transferToPublic/transferToAnonymous deduct a protocol fee from this reserve.
 const feeToken = await client.getFeeToken();
-const feeAmount = await client.getFeeAmount();
+const inlineFee = await client.getAnonymousInlineTransferFee();
 const feeBalance = await client.getPrepaidFeeBalance(accountId, feeToken);
-if (feeBalance < feeAmount) {
+if (feeBalance < inlineFee) {
   const feeResult = await client.depositFees(
     wallet,
     accountId,
@@ -654,7 +666,7 @@ try {
 | "Account finalization timeout"     | Account creation is still processing                                  | Wait a few minutes and retry                                                                                        |
 | "Proof generation failed"          | Invalid inputs or cryptographic operation error                       | Verify all parameters and ensure sufficient balance                                                                 |
 | "Amount too small"                 | Amount rounds to 0 in contract scale                                  | Use a larger amount (minimum depends on token decimals)                                                             |
-| "Insufficient prepaid fee balance" | Unlinkable account's prepaid fee reserve is below the per-transfer fee | Call `depositFees(wallet, accountId, amount)` to top up; use `getFeeToken()`/`getFeeAmount()` to check requirements |
+| "Insufficient prepaid fee balance" | Unlinkable account's prepaid fee reserve is below the selected inline/IPFS transfer fee | Call `depositFees(wallet, accountId, amount)` to top up; use `getFeeToken()` and the matching anonymous fee getter |
 | Fairycloak HTTP error              | Relay unreachable or request rejected                                 | Check the relay URL, API key, and account authorization                                                             |
 
 ---

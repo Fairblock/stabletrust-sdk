@@ -232,25 +232,31 @@ async function main() {
   console.log("\n── [5] Top up prepaid fees for anon1 ───────────────────");
 
   const feeToken = await client.getFeeToken();
-  const feeAmount = await client.getFeeAmount();
+  const inlineFee = await client.getAnonymousInlineTransferFee();
   log("  fee token  :", feeToken);
-  log("  fee/xfer   :", fmt(feeAmount, TOKEN_DECIMALS), "tokens");
+  log("  inline fee :", fmt(inlineFee, TOKEN_DECIMALS), "tokens");
 
-  if (feeAmount === 0n) {
+  if (inlineFee === 0n) {
     log("  no fee configured — transactions are free, skipping top-up.");
   } else {
     const feeBalance = await client.getPrepaidFeeBalance(anon1Id, feeToken);
     log("  fee balance:", fmt(feeBalance, TOKEN_DECIMALS), "tokens");
 
-    if (feeBalance < MIN_FEE_BALANCE) {
+    const requiredFeeBalance =
+      inlineFee > MIN_FEE_BALANCE ? inlineFee : MIN_FEE_BALANCE;
+
+    if (feeBalance < requiredFeeBalance) {
       const currency = feeToken === ethers.ZeroAddress ? "native" : "ERC-20";
+      const deficit = requiredFeeBalance - feeBalance;
+      const topUpAmount =
+        FEE_DEPOSIT_AMOUNT > deficit ? FEE_DEPOSIT_AMOUNT : deficit;
       log(
-        `  balance < ${fmt(MIN_FEE_BALANCE, TOKEN_DECIMALS)}, depositing ${fmt(FEE_DEPOSIT_AMOUNT, TOKEN_DECIMALS)} ${currency} fee tokens (anon1 pays gas) …`,
+        `  balance < ${fmt(requiredFeeBalance, TOKEN_DECIMALS)}, depositing ${fmt(topUpAmount, TOKEN_DECIMALS)} ${currency} fee tokens (anon1 pays gas) …`,
       );
       const fd = await client.depositFees(
         anon1Wallet,
         anon1Id,
-        FEE_DEPOSIT_AMOUNT,
+        topUpAmount,
       );
       log("  request_id:", fd.request_id, "  status:", fd.status);
       if (fd.error) log("    [!] Error:", fd.error);
@@ -266,7 +272,7 @@ async function main() {
       log("  new fee balance:", fmt(newFeeBalance, TOKEN_DECIMALS), "tokens");
     } else {
       log(
-        `  fee balance sufficient (${fmt(feeBalance, TOKEN_DECIMALS)} ≥ ${fmt(MIN_FEE_BALANCE, TOKEN_DECIMALS)}), skipping deposit.`,
+        `  fee balance sufficient (${fmt(feeBalance, TOKEN_DECIMALS)} ≥ ${fmt(requiredFeeBalance, TOKEN_DECIMALS)}), skipping deposit.`,
       );
     }
   }

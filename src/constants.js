@@ -4,6 +4,10 @@
 
 export const TRANSFER_CONFIDENTIAL_SIGNATURE = "transferConfidential(address,address,bytes,bool)";
 export const WITHDRAW_CONFIDENTIAL_SIGNATURE = "withdraw(address,uint256,bytes,bool)";
+export const FEE_TOKEN_SIGNATURE = "feeToken()";
+export const NON_ANONYMOUS_TRANSFER_FEE_SIGNATURE = "nonAnonymousTransferFee()";
+export const ANONYMOUS_IPFS_TRANSFER_FEE_SIGNATURE = "anonymousIpfsTransferFee()";
+export const ANONYMOUS_INLINE_TRANSFER_FEE_SIGNATURE = "anonymousInlineTransferFee()";
 
 export const CONTRACT_ABI = [
   "function createConfidentialAccount(bytes elgamalPubkey) external",
@@ -14,7 +18,10 @@ export const CONTRACT_ABI = [
   `function ${TRANSFER_CONFIDENTIAL_SIGNATURE} external payable`,
   `function ${WITHDRAW_CONFIDENTIAL_SIGNATURE} external`,
   "function applyPending() external",
-  "function feeAmount() external view returns (uint256)",
+  `function ${FEE_TOKEN_SIGNATURE} external view returns (address)`,
+  `function ${NON_ANONYMOUS_TRANSFER_FEE_SIGNATURE} external view returns (uint256)`,
+  `function ${ANONYMOUS_IPFS_TRANSFER_FEE_SIGNATURE} external view returns (uint256)`,
+  `function ${ANONYMOUS_INLINE_TRANSFER_FEE_SIGNATURE} external view returns (uint256)`,
 ];
 
 export const ERC20_ABI = [

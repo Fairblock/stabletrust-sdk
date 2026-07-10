@@ -288,14 +288,17 @@ declare module "@fairblock/stabletrust" {
      */
     getFeeToken(): Promise<string>;
 
-    /**
-     * Get the protocol fee amount in raw ERC-20 units of the fee token.
-     * This is the amount deducted per anonymous transfer. Returns 0n if no fee is set.
-     */
-    getFeeAmount(): Promise<bigint>;
+    /** Get the fixed fee used by all non-anonymous confidential transfers. */
+    getNonAnonymousTransferFee(): Promise<bigint>;
+
+    /** Get the fixed fee used by anonymous transfers whose proof is stored on IPFS. */
+    getAnonymousIpfsTransferFee(): Promise<bigint>;
+
+    /** Get the fixed fee used by anonymous transfers whose proof is submitted inline. */
+    getAnonymousInlineTransferFee(): Promise<bigint>;
 
     /**
-     * Get the prepaid fee balance for an anonymous account and token (raw ERC-20 units).
+     * Get the prepaid fee balance for an anonymous account and token (raw fee-token units).
      * Use `getFeeToken()` to get the active fee token address.
      */
     getPrepaidFeeBalance(accountId: string, token: string): Promise<bigint>;
@@ -308,9 +311,10 @@ declare module "@fairblock/stabletrust" {
      * Handles ERC-20 approval automatically.
      *
      * The fee token is read from the contract — use `getFeeToken()` to see it.
-     * Use `getFeeAmount()` to see how much is deducted per transfer.
+     * Use `getAnonymousInlineTransferFee()` or `getAnonymousIpfsTransferFee()`
+     * to see how much is deducted for the selected proof path.
      *
-     * @param amount Amount in raw ERC-20 units of the active fee token
+     * @param amount Amount in raw units of the active fee token (wei for native currency)
      */
     depositFees(
       authWallet: ethers.Wallet,
@@ -640,10 +644,17 @@ declare module "@fairblock/stabletrust" {
       options?: WithdrawOptions,
     ): Promise<ethers.ContractTransactionReceipt>;
 
-    /**
-     * Get the current fee amount for confidential transfers
-     */
-    getFeeAmount(): Promise<bigint>;
+    /** Get the currently configured fee token. address(0) means native currency. */
+    getFeeToken(): Promise<string>;
+
+    /** Get the fixed fee used by all non-anonymous confidential transfers. */
+    getNonAnonymousTransferFee(): Promise<bigint>;
+
+    /** Get the fixed fee used by anonymous transfers whose proof is stored on IPFS. */
+    getAnonymousIpfsTransferFee(): Promise<bigint>;
+
+    /** Get the fixed fee used by anonymous transfers whose proof is submitted inline. */
+    getAnonymousInlineTransferFee(): Promise<bigint>;
 
     /**
      * Get the public ERC20 balance for an address (for comparison with confidential balance)
@@ -724,6 +735,10 @@ declare module "@fairblock/stabletrust" {
    */
   export const TRANSFER_CONFIDENTIAL_SIGNATURE: string;
   export const WITHDRAW_CONFIDENTIAL_SIGNATURE: string;
+  export const FEE_TOKEN_SIGNATURE: string;
+  export const NON_ANONYMOUS_TRANSFER_FEE_SIGNATURE: string;
+  export const ANONYMOUS_IPFS_TRANSFER_FEE_SIGNATURE: string;
+  export const ANONYMOUS_INLINE_TRANSFER_FEE_SIGNATURE: string;
   export const CONTRACT_ABI: any[];
 
   /**
