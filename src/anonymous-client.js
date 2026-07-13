@@ -6,7 +6,7 @@ import {
   validateAnonymousAccountId,
   uploadBytesToIpfs,
 } from "./utils.js";
-import { getStabletrustContractAddress } from "./constants.js";
+import { ERC20_ABI, getStabletrustContractAddress } from "./constants.js";
 
 // EIP-712 domain for anonymous operations (LibAnonAuth domain name)
 const ANON_DOMAIN_NAME = "ConfidentialMirrorAnonymous";
@@ -176,11 +176,7 @@ export class AnonymousTransferClient {
     if (!this._tokenDecimals) this._tokenDecimals = {};
     const key = tokenAddress.toLowerCase();
     if (this._tokenDecimals[key] !== undefined) return this._tokenDecimals[key];
-    const contract = new ethers.Contract(
-      tokenAddress,
-      ["function decimals() view returns (uint8)"],
-      this.provider,
-    );
+    const contract = new ethers.Contract(tokenAddress, ERC20_ABI, this.provider);
     const decimals = Number(await contract.decimals());
     this._tokenDecimals[key] = decimals;
     return decimals;
@@ -881,11 +877,7 @@ export class AnonymousTransferClient {
       // 1. Approve if needed
       const tokenContract = new ethers.Contract(
         tokenAddress,
-        [
-          "function balanceOf(address) view returns (uint256)",
-          "function allowance(address,address) view returns (uint256)",
-          "function approve(address,uint256) returns (bool)",
-        ],
+        ERC20_ABI,
         walletWithProvider,
       );
 
@@ -1711,11 +1703,7 @@ export class AnonymousTransferClient {
         // ERC-20: approve if needed
         const tokenContract = new ethers.Contract(
           feeToken,
-          [
-            "function balanceOf(address) view returns (uint256)",
-            "function allowance(address,address) view returns (uint256)",
-            "function approve(address,uint256) returns (bool)",
-          ],
+          ERC20_ABI,
           walletWithProvider,
         );
 
