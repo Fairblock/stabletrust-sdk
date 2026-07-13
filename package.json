@@ -29,6 +29,7 @@
   },
   "scripts": {
     "test": "node --test test/*.test.mjs",
+    "test:live": "node --test test/ipfs-live.mjs",
     "check:abi": "node scripts/check-contract-abi.mjs",
     "check": "npm run check:abi && npm test"
   },
