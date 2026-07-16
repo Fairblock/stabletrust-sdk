@@ -1,7 +1,7 @@
 import { timelockEncrypt } from "./vendor/ts-ibe/index.js";
 
 const IBE_PUBKEY_URL =
-  "https://testnet-api.fairblock.network/fairyring/keyshare/pubkey";
+  "https://anon-testnet-api.fairblock.network/fairyring/keyshare/pubkey";
 
 /** @type {{ active: string, queued: string | null } | null} */
 let cachedIbePublicKeys = null;
