@@ -552,6 +552,8 @@ declare module "@fairblock/stabletrust" {
     ipfsUploadUrl?: string;
     /** Optional bearer token for the StableTrust IPFS upload endpoint. Falls back to STABLETRUST_IPFS_API_KEY in Node.js. */
     ipfsApiKey?: string;
+    /** StableTrust backend API base URL for persisting request rows. Defaults to the production API. */
+    apiBaseUrl?: string;
   }
 
   /**

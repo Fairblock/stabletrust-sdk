@@ -29,6 +29,15 @@ export const CONTRACT_ABI = [
   `function ${NON_ANONYMOUS_TRANSFER_FEE_SIGNATURE} external view returns (uint256)`,
   `function ${ANONYMOUS_IPFS_TRANSFER_FEE_SIGNATURE} external view returns (uint256)`,
   `function ${ANONYMOUS_INLINE_TRANSFER_FEE_SIGNATURE} external view returns (uint256)`,
+  // Events used to extract request/tx IDs from receipts for backend persistence
+  "event DepositRequested(address indexed ownerAddr, uint256 indexed txId, address indexed token, uint256 plainAmount, bytes availableShare, bytes pendingShare)",
+  "event DepositProcessed(address indexed ownerAddr, uint256 indexed txId, bool ok, string errorMsg, address token, bytes newAvailC1, bytes newAvailC2, uint64 pendingCreditCounter, uint64 minimumPendingCreditCounter, bytes availableShare, bytes pendingShare)",
+  "event TransferRequested(address indexed sender, address indexed recipient, uint256 indexed txId, address token, bytes proof, uint256 feePaid, bool useOffchainVerify, bytes senderPubkey, bytes recipientPubkey, bytes senderCurrC1, bytes senderCurrC2)",
+  "event TransferProcessed(address indexed sender, address indexed recipient, uint256 indexed txId, bool ok, string errorMsg, address token, bytes senderNewAvailC1, bytes senderNewAvailC2, bytes recipientNewPendingC1, bytes recipientNewPendingC2, uint64 senderPendingCreditCounter, bytes senderAvailableShare, uint64 recipientPendingCreditCounter, uint64 recipientMinimumPendingCreditCounter, bytes recipientPendingShare)",
+  "event ApplyPendingRequested(address indexed ownerAddr, uint256 indexed txId)",
+  "event ApplyPendingProcessed(address indexed ownerAddr, uint256 indexed txId, bool ok, string errorMsg, address[] tokens, bytes[] newAvailC1, bytes[] newAvailC2, uint64 pendingCreditCounter, uint64 minimumPendingCreditCounter, bytes availableShare)",
+  "event WithdrawRequested(address indexed ownerAddr, uint256 indexed txId, address token, uint256 plainAmount, bytes proof, bool useOffchainVerify, bytes userPubkey, bytes userCurrC1, bytes userCurrC2)",
+  "event WithdrawProcessed(address indexed ownerAddr, uint256 indexed txId, bool ok, string errorMsg, address token, uint256 plainAmount, bytes newAvailC1, bytes newAvailC2, uint64 pendingCreditCounter, uint64 minimumPendingCreditCounter, bytes availableShare)",
 ];
 
 export const ERC20_ABI = [
@@ -36,6 +45,7 @@ export const ERC20_ABI = [
   "function allowance(address owner, address spender) external view returns (uint256)",
   "function balanceOf(address account) external view returns (uint256)",
   "function decimals() external view returns (uint8)",
+  "function symbol() external view returns (string)",
 ];
 
 export const TEMPO_FEE_TOKEN_ADDRESS =

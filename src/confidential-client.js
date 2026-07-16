@@ -19,6 +19,8 @@ import {
   uploadBytesToIpfs,
 } from "./utils.js";
 import { initializeWasm } from "./wasm-loader.js";
+import { encryptRandomness } from "./ibe.js";
+import { createRequest, CHAIN_KEY_BY_ID } from "./backend.js";
 
 // Auto-initialize WASM on first use
 let wasmModulePromise = null;
@@ -43,6 +45,7 @@ export class ConfidentialTransferClient {
    * @param {Object} [options]
    * @param {string} [options.ipfsUploadUrl] - StableTrust IPFS upload endpoint for off-chain proof uploads
    * @param {string} [options.ipfsApiKey] - Optional bearer token for the StableTrust IPFS upload endpoint
+   * @param {string} [options.apiBaseUrl] - StableTrust backend API base URL for request persistence
    */
   constructor(rpcUrl, contractAddressOrChainId, chainId, options = {}) {
     // Validate required config
@@ -90,6 +93,7 @@ export class ConfidentialTransferClient {
       chainId: Number(resolvedChainId),
       ipfsUploadUrl: ipfsOptions.ipfsUploadUrl || null,
       ipfsApiKey: ipfsOptions.ipfsApiKey || null,
+      apiBaseUrl: ipfsOptions.apiBaseUrl || null,
     };
 
     // WASM will be auto-initialized on first use
@@ -111,6 +115,132 @@ export class ConfidentialTransferClient {
         `Failed to initialize contracts: ${error.message}. Check your RPC URL and contract addresses.`,
       );
     }
+  }
+
+  /**
+   * Fire-and-forget request row creation
+   * @private
+   */
+  _postRequest(data) {
+    const apiBaseUrl = this.config.apiBaseUrl || undefined;
+    const payload = {
+      chainKey: CHAIN_KEY_BY_ID[this.config.chainId] || String(this.config.chainId),
+      chainId: this.config.chainId,
+      ...data,
+    };
+    createRequest(payload, apiBaseUrl).catch((err) => {
+      const status = err?.response?.status;
+      const body = err?.response?.data;
+      console.warn("[StableTrust] Failed to post request:", err.message);
+      if (status) console.warn("[StableTrust] Status:", status);
+      if (body) console.warn("[StableTrust] Response:", JSON.stringify(body, null, 2));
+    });
+  }
+
+  /**
+   * Extract request/tx ID from receipt logs
+   * @private
+   */
+  _getRequestIdFromReceipt(receipt, eventNames) {
+    try {
+      const iface = this.contract.interface;
+      const contractAddr = this.config.contractAddress.toLowerCase();
+
+      for (const log of receipt.logs) {
+        if (log.address.toLowerCase() === contractAddr) {
+          const txId = this._parseLogItem(iface, log, eventNames);
+          if (txId) return txId;
+        }
+      }
+
+      for (const log of receipt.logs) {
+        const txId = this._parseLogItem(iface, log, eventNames);
+        if (txId) return txId;
+      }
+
+      for (const name of eventNames) {
+        try {
+          const topicHash = iface.getEvent(name).topicHash;
+          for (const log of receipt.logs) {
+            if (log.topics[0] === topicHash && log.topics.length >= 3) {
+              const txId = BigInt(log.topics[2]).toString();
+              if (txId !== "0") return txId;
+            }
+          }
+        } catch {
+          // Event not in ABI
+        }
+      }
+
+      return null;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Parse a single log item to extract txId
+   * @private
+   */
+  _parseLogItem(iface, log, eventNames) {
+    try {
+      const parsed = iface.parseLog({
+        topics: [...log.topics],
+        data: log.data,
+      });
+
+      if (!parsed || !eventNames.includes(parsed.name)) return null;
+
+      if (parsed.args.txId !== undefined && parsed.args.txId !== null) {
+        return parsed.args.txId.toString();
+      }
+      if (parsed.args.requestId !== undefined && parsed.args.requestId !== null) {
+        return parsed.args.requestId.toString();
+      }
+
+      let txId;
+      if (
+        parsed.name === "TransferRequested" ||
+        parsed.name === "TransferProcessed"
+      ) {
+        txId = parsed.args[2];
+      } else {
+        txId = parsed.args[1];
+      }
+
+      return txId !== undefined && txId !== null ? txId.toString() : null;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Get requestId from account core state (txId)
+   * @private
+   */
+  async _getRequestIdFromAccountCore(address) {
+    try {
+      const account = await this.contract.getAccountCore(address);
+      const txId = account.txId?.toString?.() ?? String(account.txId);
+      return txId && txId !== "0" ? txId : null;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Resolve a request ID from receipt logs, then account state, then tx hash
+   * @private
+   */
+  async _resolveRequestId(receipt, address, eventNames) {
+    let requestId = this._getRequestIdFromReceipt(receipt, eventNames);
+    if (!requestId) {
+      requestId = await this._getRequestIdFromAccountCore(address);
+    }
+    if (!requestId || requestId === "0") {
+      requestId = receipt.hash;
+    }
+    return requestId;
   }
 
   /**
@@ -465,7 +595,11 @@ export class ConfidentialTransferClient {
 
     if (pendingBalance.amount > 0n) {
       try {
-        await this._applyPending(wallet, { waitForFinalization: true });
+        await this._applyPending(wallet, {
+          waitForFinalization: true,
+          tokenAddress,
+          pendingAmount: pendingBalance.amount,
+        });
       } catch (error) {
         console.warn(
           `Warning: Failed to apply pending balance before ${actionLabel}: ${error.message}. You may have pending balance that is not yet applied.`,
@@ -545,6 +679,27 @@ export class ConfidentialTransferClient {
       if (waitForFinalization) {
         await this._waitForGlobalState(address, "deposit");
       }
+
+      const tokenSymbol = await tokenContract.symbol();
+      const requestId = await this._resolveRequestId(receipt, address, [
+        "DepositRequested",
+        "DepositProcessed",
+      ]);
+
+      this._postRequest({
+        requestId,
+        userAddress: address.toLowerCase(),
+        operationKind: 1,
+        type: "deposit",
+        transactionHash: receipt.hash,
+        status: "pending",
+        details: {
+          token: tokenSymbol,
+          tokenAddress,
+          amount: depositAmount.toString(),
+          amountInWei: true,
+        },
+      });
 
       return receipt;
     } catch (error) {
@@ -710,6 +865,68 @@ export class ConfidentialTransferClient {
         await this._waitForGlobalState(senderAddress, "transfer");
       }
 
+      // IBE-encrypt randomness then persist both records (fire-and-forget, after finalization)
+      const txHash = receipt.hash;
+      const requestId = await this._resolveRequestId(receipt, senderAddress, [
+        "TransferRequested",
+        "TransferProcessed",
+      ]);
+      const tokenSymbol = await tokenContract.symbol();
+
+      Promise.all([
+        encryptRandomness(senderAddress, proof.data.sender_randomness),
+        encryptRandomness(recipientAddress, proof.data.receiver_randomness),
+      ])
+        .then(([senderEnc, receiverEnc]) => {
+          const transferDetails = {
+            sender: senderAddress.toLowerCase(),
+            recipient: recipientAddress.toLowerCase(),
+            token: tokenSymbol,
+            tokenAddress,
+            amount: transferAmount.toString(),
+            amountInWei: true,
+          };
+
+          const queuedFields =
+            senderEnc.queuedEncrypted && receiverEnc.queuedEncrypted
+              ? {
+                  queuedEncryptedSenderRandomness: senderEnc.queuedEncrypted,
+                  queuedEncryptedReceiverRandomness: receiverEnc.queuedEncrypted,
+                }
+              : {};
+
+          this._postRequest({
+            requestId,
+            userAddress: senderAddress.toLowerCase(),
+            operationKind: 2,
+            type: "transfer",
+            transactionHash: txHash,
+            status: "pending",
+            details: transferDetails,
+            encryptedSenderRandomness: senderEnc.encrypted,
+            encryptedReceiverRandomness: receiverEnc.encrypted,
+            ...queuedFields,
+          });
+
+          this._postRequest({
+            requestId: `received-${requestId}-${recipientAddress.toLowerCase()}`,
+            userAddress: recipientAddress.toLowerCase(),
+            operationKind: 2,
+            type: "received",
+            transactionHash: txHash,
+            status: "pending",
+            details: transferDetails,
+            encryptedReceiverRandomness: receiverEnc.encrypted,
+            ...(receiverEnc.queuedEncrypted
+              ? {
+                  queuedEncryptedReceiverRandomness:
+                    receiverEnc.queuedEncrypted,
+                }
+              : {}),
+          });
+        })
+        .catch(() => {});
+
       return receipt;
     } catch (error) {
       const message = error?.message ?? String(error);
@@ -857,6 +1074,27 @@ export class ConfidentialTransferClient {
         await this._waitForGlobalState(address, "withdraw");
       }
 
+      const requestId = await this._resolveRequestId(receipt, address, [
+        "WithdrawRequested",
+        "WithdrawProcessed",
+      ]);
+      const tokenSymbol = await tokenContract.symbol();
+
+      this._postRequest({
+        requestId,
+        userAddress: address.toLowerCase(),
+        operationKind: 4,
+        type: "withdraw",
+        transactionHash: receipt.hash,
+        status: "pending",
+        details: {
+          token: tokenSymbol,
+          tokenAddress,
+          amount: withdrawAmount.toString(),
+          amountInWei: true,
+        },
+      });
+
       return receipt;
     } catch (error) {
       const message = error?.message ?? String(error);
@@ -879,7 +1117,7 @@ export class ConfidentialTransferClient {
    * @returns {Promise<Object>} Transaction receipt
    */
   async _applyPending(wallet, options = {}) {
-    const { waitForFinalization = true } = options;
+    const { waitForFinalization = true, tokenAddress, pendingAmount } = options;
 
     try {
       if (!wallet) {
@@ -898,6 +1136,37 @@ export class ConfidentialTransferClient {
       if (waitForFinalization) {
         await this._waitForGlobalState(address, "apply pending");
       }
+
+      const requestId = await this._resolveRequestId(receipt, address, [
+        "ApplyPendingRequested",
+        "ApplyPendingProcessed",
+      ]);
+
+      const tokenContract = tokenAddress
+        ? this._getTokenContract(tokenAddress)
+        : null;
+      const tokenSymbol = tokenContract
+        ? await tokenContract.symbol()
+        : "USD₮0";
+
+      this._postRequest({
+        requestId,
+        userAddress: address.toLowerCase(),
+        operationKind: 3,
+        type: "secure claim",
+        transactionHash: receipt.hash,
+        status: "pending",
+        details: {
+          token: tokenSymbol,
+          ...(tokenAddress ? { tokenAddress } : {}),
+          ...(pendingAmount === undefined
+            ? {}
+            : {
+                pendingAmount: pendingAmount.toString(),
+                amountInWei: true,
+              }),
+        },
+      });
 
       return receipt;
     } catch (error) {
