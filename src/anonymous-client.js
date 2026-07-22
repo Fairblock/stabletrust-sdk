@@ -24,6 +24,14 @@ const ADD_FEES_INTERFACE = new ethers.Interface([
   "function addFees(string accountId, address token, uint256 amount, uint256 authNonce, uint256 deadline, bytes signature) external payable",
 ]);
 
+const WITHDRAW_FEES_INTERFACE = new ethers.Interface([
+  "function withdrawFees(string accountId, address token, address destination, uint256 amount, uint256 authNonce, uint256 deadline, bytes signature) external",
+]);
+
+const WITHDRAW_ALL_FEES_INTERFACE = new ethers.Interface([
+  "function withdrawAllFees(string accountId, address destination, uint256 authNonce, uint256 deadline, bytes signature) external",
+]);
+
 /**
  * Internal helper to parse values as BigInt, handling hex strings and null/undefined.
  * @private
@@ -623,6 +631,65 @@ export class AnonymousTransferClient {
       const clientRequestId = ethers.hexlify(ethers.randomBytes(32));
       const deadline = this._makeDeadline(deadlineOffset);
 
+      //  Prepaid-fee funding (fees-for-all-ops) 
+      // The relayer submits create... the fee payer must fund an initial deposit
+      // in the active fee token and approve the diamond so it can pull it into
+      // escrow. The create fee is charged from it and the remainder becomes the
+      // account's prepaid balance once creation finalises.
+      const [feeToken, minInitialDeposit, createFee] = await Promise.all([
+        this.getFeeToken(),
+        this.getAnonymousMinimumInitialFeeDeposit(),
+        this.getAnonymousCreateAccountFee(),
+      ]);
+      const feePayer = authAddress;
+      const initialFeeDeposit =
+        options.initialFeeDeposit != null
+          ? BigInt(options.initialFeeDeposit)
+          : minInitialDeposit;
+      if (initialFeeDeposit < minInitialDeposit)
+        throw new Error(
+          `initialFeeDeposit (${initialFeeDeposit}) is below the contract minimum (${minInitialDeposit})`,
+        );
+      if (initialFeeDeposit < createFee)
+        throw new Error(
+          `initialFeeDeposit (${initialFeeDeposit}) is below the create-account fee (${createFee})`,
+        );
+
+      if (feeToken === ethers.ZeroAddress) {
+        throw new Error(
+          "Active fee token is native (address 0); relayer-submitted create is unsupported for native fees " +
+            "because the contract requires the fee payer to submit the tx. Configure an ERC-20 fee token or use a raw-tx create path.",
+        );
+      }
+
+      if (initialFeeDeposit > 0n) {
+        const walletWithProvider = authWallet.connect
+          ? authWallet.connect(this.provider)
+          : authWallet;
+        const tokenContract = new ethers.Contract(
+          feeToken,
+          ERC20_ABI,
+          walletWithProvider,
+        );
+        const [balance, allowance] = await Promise.all([
+          tokenContract.balanceOf(feePayer),
+          tokenContract.allowance(feePayer, this.diamondAddress),
+        ]);
+        if (balance < initialFeeDeposit)
+          throw new Error(
+            `Insufficient fee-token balance for initial deposit. Required: ${initialFeeDeposit}, available: ${balance} (token ${feeToken})`,
+          );
+        if (allowance < initialFeeDeposit) {
+          const approveTx = await tokenContract.approve(
+            this.diamondAddress,
+            ethers.MaxUint256,
+          );
+          const receipt = await approveTx.wait();
+          if (!receipt || receipt.status === 0)
+            throw new Error("Fee token approval failed");
+        }
+      }
+
       // EIP-712 struct hashes for dynamic fields
       const initialSignersHash = ethers.keccak256(
         ethers.AbiCoder.defaultAbiCoder().encode(
@@ -639,6 +706,9 @@ export class AnonymousTransferClient {
           { name: "initialSignersHash", type: "bytes32" },
           { name: "elgamalPubkeyHash", type: "bytes32" },
           { name: "clientRequestId", type: "bytes32" },
+          { name: "feePayer", type: "address" },
+          { name: "feeToken", type: "address" },
+          { name: "initialFeeDeposit", type: "uint256" },
           { name: "deadline", type: "uint256" },
         ],
       };
@@ -647,6 +717,9 @@ export class AnonymousTransferClient {
         initialSignersHash,
         elgamalPubkeyHash,
         clientRequestId,
+        feePayer,
+        feeToken,
+        initialFeeDeposit,
         deadline: BigInt(deadline),
       };
 
@@ -657,6 +730,9 @@ export class AnonymousTransferClient {
         elgamal_pubkey: elgamalHex,
         auth_signers: [authAddress],
         client_request_id: clientRequestId,
+        fee_payer: feePayer,
+        fee_token: feeToken,
+        initial_fee_deposit: initialFeeDeposit.toString(),
         deadline: String(deadline),
         signature,
       });
@@ -1562,6 +1638,106 @@ export class AnonymousTransferClient {
   }
 
   /**
+   * Fixed fee charged when creating an anonymous account.
+   *
+   * @returns {Promise<bigint>} Fee amount in raw fee-token units
+   */
+  async getAnonymousCreateAccountFee() {
+    try {
+      const data = await this._fetch("GET", "/v1/views/fees/anonymous-create");
+      return _parseBigInt(data.result ?? data);
+    } catch (e) {
+      throw new Error(`Failed to get anonymous create-account fee: ${e.message}`);
+    }
+  }
+
+  /**
+   * Minimum initial fee deposit required at account creation.
+   *
+   * @returns {Promise<bigint>} Amount in raw fee-token units
+   */
+  async getAnonymousMinimumInitialFeeDeposit() {
+    try {
+      const data = await this._fetch(
+        "GET",
+        "/v1/views/fees/anonymous-minimum-initial-deposit",
+      );
+      return _parseBigInt(data.result ?? data);
+    } catch (e) {
+      throw new Error(
+        `Failed to get anonymous minimum initial fee deposit: ${e.message}`,
+      );
+    }
+  }
+
+  /**
+   * Fixed fee charged for an auth-key update.
+   *
+   * @returns {Promise<bigint>} Fee amount in raw fee-token units
+   */
+  async getAnonymousUpdateKeysFee() {
+    try {
+      const data = await this._fetch(
+        "GET",
+        "/v1/views/fees/anonymous-update-keys",
+      );
+      return _parseBigInt(data.result ?? data);
+    } catch (e) {
+      throw new Error(`Failed to get anonymous update-keys fee: ${e.message}`);
+    }
+  }
+
+  /**
+   * Fixed fee charged for an apply-pending operation.
+   *
+   * @returns {Promise<bigint>} Fee amount in raw fee-token units
+   */
+  async getAnonymousApplyPendingFee() {
+    try {
+      const data = await this._fetch("GET", "/v1/views/fees/anonymous-apply");
+      return _parseBigInt(data.result ?? data);
+    } catch (e) {
+      throw new Error(`Failed to get anonymous apply-pending fee: ${e.message}`);
+    }
+  }
+
+  /**
+   * Fixed fee charged for an IPFS-proof withdraw.
+   *
+   * @returns {Promise<bigint>} Fee amount in raw fee-token units
+   */
+  async getAnonymousIpfsWithdrawFee() {
+    try {
+      const data = await this._fetch(
+        "GET",
+        "/v1/views/fees/anonymous-withdraw-ipfs",
+      );
+      return _parseBigInt(data.result ?? data);
+    } catch (e) {
+      throw new Error(`Failed to get anonymous IPFS withdraw fee: ${e.message}`);
+    }
+  }
+
+  /**
+   * Fixed fee charged for an inline-proof withdraw.
+   *
+   * @returns {Promise<bigint>} Fee amount in raw fee-token units
+   */
+  async getAnonymousInlineWithdrawFee() {
+    try {
+      const data = await this._fetch(
+        "GET",
+        "/v1/views/fees/anonymous-withdraw-inline",
+      );
+      return _parseBigInt(data.result ?? data);
+    } catch (e) {
+      throw new Error(
+        `Failed to get anonymous inline withdraw fee: ${e.message}`,
+      );
+    }
+  }
+
+  /**
    * Get the fixed fee used by all non-anonymous confidential transfers.
    *
    * @returns {Promise<bigint>} Fee amount in raw fee-token units
@@ -1811,11 +1987,55 @@ export class AnonymousTransferClient {
   }
 
   /**
-   * Withdraw a specific amount from the prepaid fee reserve via Fairycloak. The relay pays gas.
+   * Build and sign a raw EVM transaction targeting the diamond, for the user-funded
+   * raw-tx flows (withdrawFees / withdrawAllFees). The wallet that signs pays the gas.
+   * Supports both EIP-1559 and legacy fee markets. Nonce/chainId/fees are supplied
+   * explicitly, so `authWallet` does not need to be provider-connected.
+   * @private
+   */
+  async _signRawDiamondTx(authWallet, calldata, value, gasLimit) {
+    const fromAddress = await authWallet.getAddress();
+    const [nonce, feeData] = await Promise.all([
+      this.provider.getTransactionCount(fromAddress),
+      this.provider.getFeeData(),
+    ]);
+    let txObj;
+    if (feeData.maxFeePerGas) {
+      txObj = {
+        to: this.diamondAddress,
+        data: calldata,
+        nonce,
+        chainId: BigInt(this.chainId),
+        gasLimit,
+        maxFeePerGas: (feeData.maxFeePerGas * 12n) / 10n,
+        maxPriorityFeePerGas: feeData.maxPriorityFeePerGas ?? 0n,
+        value,
+      };
+    } else {
+      txObj = {
+        to: this.diamondAddress,
+        data: calldata,
+        nonce,
+        chainId: BigInt(this.chainId),
+        gasLimit,
+        gasPrice: (feeData.gasPrice * 11n) / 10n,
+        value,
+      };
+    }
+    return authWallet.signTransaction(txObj);
+  }
+
+  /**
+   * Withdraw a specific amount from the prepaid fee reserve.
+   *
+   * User-funded raw-transaction model (like deposit/addFees): the anonymous signer
+   * authorises the inner operation via EIP-712, and the same wallet signs and funds
+   * the outer `withdrawFees(...)` EVM transaction (zero ETH value). Fairycloak validates
+   * and broadcasts it unchanged. The wallet pays the gas; no prepaid fee is charged.
    *
    * Use this to reclaim fees for a specific (possibly historical) fee token.
    *
-   * @param {ethers.Wallet|ethers.Signer} authWallet - Authorised signer for the anonymous account
+   * @param {ethers.Wallet|ethers.Signer} authWallet - Authorised signer; also funds the outer tx
    * @param {string} accountId
    * @param {Object} params
    * @param {string}              params.token       - Fee token address to withdraw
@@ -1823,6 +2043,7 @@ export class AnonymousTransferClient {
    * @param {bigint|string|number} params.amount     - Amount in raw ERC-20 units
    * @param {Object} [options]
    * @param {number} [options.deadlineOffset=3600]
+   * @param {bigint} [options.gasLimit=300000n]
    * @returns {Promise<{request_id:string, tx_hash:string, status:string}>}
    */
   async withdrawFees(
@@ -1832,7 +2053,8 @@ export class AnonymousTransferClient {
     options = {},
   ) {
     validateAnonymousAccountId(accountId, "accountId");
-    const { deadlineOffset = DEFAULT_DEADLINE_OFFSET } = options;
+    const { deadlineOffset = DEFAULT_DEADLINE_OFFSET, gasLimit = 300000n } =
+      options;
     try {
       if (!ethers.isAddress(token))
         throw new Error(`Invalid token address: ${token}`);
@@ -1866,14 +2088,28 @@ export class AnonymousTransferClient {
 
       const signature = await authWallet.signTypedData(domain, types, value);
 
+      // Build + sign the user-funded raw withdrawFees tx (must carry zero ETH value).
+      const calldata = WITHDRAW_FEES_INTERFACE.encodeFunctionData(
+        "withdrawFees",
+        [
+          accountId,
+          token,
+          destination,
+          amountBig,
+          authNonce,
+          BigInt(deadline),
+          signature,
+        ],
+      );
+      const signedTx = await this._signRawDiamondTx(
+        authWallet,
+        calldata,
+        0n,
+        gasLimit,
+      );
+
       return await this._fetch("POST", "/v1/anonymous/fees/withdraw", {
-        account_id: accountId,
-        token,
-        destination,
-        amount: String(amountBig),
-        auth_nonce: String(authNonce),
-        deadline: String(deadline),
-        signature,
+        raw_tx: signedTx,
       });
     } catch (e) {
       const msg = e?.message ?? String(e);
@@ -1883,20 +2119,25 @@ export class AnonymousTransferClient {
   }
 
   /**
-   * Withdraw all prepaid fee balances across all (including historical) fee tokens via Fairycloak.
-   * The relay pays gas.
+   * Withdraw all prepaid fee balances across all (including historical) fee tokens.
    *
-   * @param {ethers.Wallet|ethers.Signer} authWallet - Authorised signer for the anonymous account
+   * User-funded raw-transaction model (like withdrawFees): the anonymous signer
+   * authorises the drain via EIP-712 and the same wallet signs and funds the outer
+   * `withdrawAllFees(...)` EVM transaction (zero ETH value). The wallet pays the gas.
+   *
+   * @param {ethers.Wallet|ethers.Signer} authWallet - Authorised signer; also funds the outer tx
    * @param {string} accountId
    * @param {Object} params
    * @param {string} params.destination - Destination EVM address
    * @param {Object} [options]
    * @param {number} [options.deadlineOffset=3600]
+   * @param {bigint} [options.gasLimit=300000n]
    * @returns {Promise<{request_id:string, tx_hash:string, status:string}>}
    */
   async withdrawAllFees(authWallet, accountId, { destination }, options = {}) {
     validateAnonymousAccountId(accountId, "accountId");
-    const { deadlineOffset = DEFAULT_DEADLINE_OFFSET } = options;
+    const { deadlineOffset = DEFAULT_DEADLINE_OFFSET, gasLimit = 300000n } =
+      options;
     try {
       if (!ethers.isAddress(destination))
         throw new Error(`Invalid destination address: ${destination}`);
@@ -1922,12 +2163,20 @@ export class AnonymousTransferClient {
 
       const signature = await authWallet.signTypedData(domain, types, value);
 
+      // Build + sign the user-funded raw withdrawAllFees tx (must carry zero ETH value).
+      const calldata = WITHDRAW_ALL_FEES_INTERFACE.encodeFunctionData(
+        "withdrawAllFees",
+        [accountId, destination, authNonce, BigInt(deadline), signature],
+      );
+      const signedTx = await this._signRawDiamondTx(
+        authWallet,
+        calldata,
+        0n,
+        gasLimit,
+      );
+
       return await this._fetch("POST", "/v1/anonymous/fees/withdraw-all", {
-        account_id: accountId,
-        destination,
-        auth_nonce: String(authNonce),
-        deadline: String(deadline),
-        signature,
+        raw_tx: signedTx,
       });
     } catch (e) {
       const msg = e?.message ?? String(e);
