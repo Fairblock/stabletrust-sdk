@@ -41,7 +41,7 @@ The SDK ships two clients that serve different privacy models:
 | Feature            | `ConfidentialTransferClient`                     | `AnonymousTransferClient`                                    |
 | :----------------- | :----------------------------------------------- | :----------------------------------------------------------- |
 | **Identity**       | On-chain wallet address is visible               | Account ID only — wallet address is hidden                   |
-| **Gas**            | User pays gas for all transactions               | Fairycloak relay pays gas (except deposit)                   |
+| **Gas**            | User pays gas for all transactions               | Relay pays gas (except user-funded raw-tx ops: deposit, fee top-up/withdraw, native-ETH create) |
 | **Setup**          | Direct RPC connection                            | Requires a running Fairycloak relay server                   |
 | **Recipient**      | Must have a confidential account                 | Can receive to another unlinkable account or a public address |
 | **Key management** | Keys auto-derived from wallet signature          | Keys derived per-account; store the private key yourself     |
@@ -53,7 +53,7 @@ Transactions are submitted on-chain directly from your wallet. The **amount and 
 
 ### `AnonymousTransferClient` — Unlinkable Transfers
 
-Transactions are routed through the **Fairycloak relay**, which submits them on-chain and pays gas. The sender's wallet address is **never revealed** on-chain — only a numeric account ID is associated with the transfer. Use this client when full sender anonymity is required.
+Transactions are routed through the **Fairycloak relay**, which submits them on-chain and pays gas (recouped from the account's prepaid fee reserve). The sender's wallet address is **never revealed** on-chain - only the caller-chosen account ID is associated with the transfer. Use this client when full sender anonymity is required.
 
 ---
 
@@ -237,7 +237,7 @@ Returns the public ERC-20 balance for an address.
 
 ## AnonymousTransferClient
 
-The `AnonymousTransferClient` routes all operations through the **Fairycloak relay server**. The relay submits transactions on-chain and pays gas on your behalf (except for deposits, which require the user to pay). Your wallet address is never revealed — only a numeric unlinkable account ID appears on-chain.
+The `AnonymousTransferClient` routes all operations through the **Fairycloak relay server**. The relay submits transactions on-chain and pays gas on your behalf, recovering the cost from the account's [prepaid fee reserve](#prepaid-fees). The exceptions are the **user-funded raw-tx operations** - `deposit`, `depositFees`, `withdrawFees`, `withdrawAllFees`, and native-ETH account creation - which you sign and pay gas for directly (and which are therefore not charged a prepaid fee). Your wallet address is never revealed - only your chosen unlinkable account ID appears on-chain.
 
 > **Access Required** — Unlinkable transfers are available to teams building privacy-critical applications. To obtain a Fairycloak relay URL and API key, reach out to the Fairblock team at [hello@fairblock.network](mailto:hello@fairblock.network).
 
@@ -264,6 +264,15 @@ const client = new AnonymousTransferClient({
 });
 ```
 
+**Config options** — `fairycloakUrl`, `chainId`, and `rpcUrl` are required. Optional:
+
+| option | default | purpose |
+|---|---|---|
+| `diamondAddress` | auto-resolved by `chainId` | override the ConfidentialMirror contract address |
+| `apiKey` | - | Fairycloak API key (sent as `X-API-Key`) |
+| `ipfsUploadUrl` / `ipfsApiKey` / `ipfsGatewayUrl` | env fallback | off-chain ZKP proof uploads (see [Off-chain ZKP proofs](#off-chain-zkp-proofs-ipfs)) |
+| `enableNativeFeeToken` | `false` | opt in to **native-ETH fee tokens**. Off by default - the SDK refuses account creation when the protocol fee token is native ETH unless this is `true`. See [Prepaid Fees](#prepaid-fees). |
+
 ### Key Derivation
 
 Unlinkable accounts use a per-account ElGamal keypair derived from a wallet signature. **Store the returned `privateKey` securely** — it cannot be recovered without the original wallet and account ID.
@@ -278,7 +287,14 @@ const keys = await client.deriveAnonymousKeys(authWallet, accountId);
 
 #### `createAccount(authWallet, accountId, elgamalPublicKey, options?)`
 
-Creates a new unlinkable account via the relay. The relay pays gas. `accountId` is a **caller-chosen string** — pick any unique identifier you like (e.g. a short UUID fragment or a human-readable name), as long as it follows the [Unlinkable Account ID Rules](#unlinkable-account-id-rules) above (non-empty, at most 20 characters, alphanumeric only, case-sensitive).
+Creates a new unlinkable account. `accountId` is a **caller-chosen string** — pick any unique identifier you like (e.g. a short UUID fragment or a human-readable name), as long as it follows the [Unlinkable Account ID Rules](#unlinkable-account-id-rules) above (non-empty, at most 20 characters, alphanumeric only, case-sensitive).
+
+Creation also seeds the account's **prepaid fee reserve** (see [Prepaid Fees](#prepaid-fees)). It pulls an `initialFeeDeposit` in the active fee token, immediately charges the one-time `anonymousCreateAccountFee`, and credits the remainder to the reserve once creation finalises. The deposit defaults to the contract's `anonymousMinimumInitialFeeDeposit`; override it with `options.initialFeeDeposit`. The submission model is chosen automatically by the active fee token:
+
+- **ERC-20 fee token** (default): the SDK checks/approves the deposit and the **relay submits + pays gas**.
+- **Native ETH fee token** (`feeToken == address(0)`): ETH can't be pulled with `transferFrom`, so the fee payer **signs and funds the payable tx itself** (`msg.value == initialFeeDeposit`, `authWallet` pays gas). This path is **disabled unless** the client is constructed with `enableNativeFeeToken: true` — otherwise `createAccount` throws.
+
+- **Options**: `deadlineOffset` (default `3600`), `initialFeeDeposit` (default = contract minimum), `gasLimit` (default `1000000n`, only used for the native raw tx)
 
 #### `ensureAnonymousAccount(authWallet, accountId, elgamalPublicKey, options?)`
 
@@ -299,7 +315,7 @@ const { accountId, accountInfo, created } = await client.ensureAnonymousAccount(
 
 #### `updateAuthKeys(authWallet, accountId, { add, remove }, options?)`
 
-Adds or removes authorised signers for an unlinkable account. Pass `ethers.Wallet` instances or raw uncompressed hex pubkey strings.
+Adds or removes authorised signers for an unlinkable account. Pass `ethers.Wallet` instances or raw uncompressed hex pubkey strings. The relay pays gas and charges the `anonymousUpdateKeysFee` from the account's [prepaid reserve](#prepaid-fees).
 
 #### `getAnonymousAccountInfo(accountId)`
 
@@ -337,7 +353,7 @@ await client.waitForRequest(result.request_id);
 
 #### `transferToPublic(authWallet, accountId, params, options?)`
 
-Transfers from an unlinkable account to a public EVM address. The relay pays gas.
+Transfers from an unlinkable account to a public EVM address. The relay pays gas and charges the inline or IPFS transfer fee (depending on `offchainZKP`) from the sender's [prepaid reserve](#prepaid-fees).
 
 **Auto-proof mode** (recommended):
 
@@ -368,7 +384,7 @@ const result = await client.transferToPublic(wallet, accountId, {
 
 #### `transferToAnonymous(authWallet, senderAccountId, params, options?)`
 
-Transfers between two unlinkable accounts. The relay pays gas.
+Transfers between two unlinkable accounts. The relay pays gas and charges the inline or IPFS transfer fee (depending on `offchainZKP`) from the sender's [prepaid reserve](#prepaid-fees).
 
 ```javascript
 const result = await client.transferToAnonymous(wallet, senderAccountId, {
@@ -381,11 +397,11 @@ const result = await client.transferToAnonymous(wallet, senderAccountId, {
 
 #### `applyPending(authWallet, accountId, options?)`
 
-Moves a pending incoming balance into available. Must be called after receiving an unlinkable-to-unlinkable transfer. The relay pays gas.
+Moves a pending incoming balance into available. Must be called after receiving an unlinkable-to-unlinkable transfer. The relay pays gas and charges the `anonymousApplyPendingFee` from the account's [prepaid reserve](#prepaid-fees).
 
 #### `withdraw(authWallet, accountId, params, options?)`
 
-Withdraws from an unlinkable account to a public EVM address. The relay pays gas.
+Withdraws from an unlinkable account to a public EVM address. The relay pays gas and charges the inline or IPFS withdraw fee (depending on `offchainZKP`) from the account's [prepaid reserve](#prepaid-fees).
 
 ```javascript
 const result = await client.withdraw(wallet, accountId, {
@@ -449,19 +465,39 @@ In manual-proof mode (when you pass a pre-computed `proof`) with `offchainZKP: t
 
 ### Prepaid Fees
 
-Every `transferToPublic` and `transferToAnonymous` call deducts a protocol fee from the sender account's **prepaid fee reserve**. Inline transfers use `anonymousInlineTransferFee`; IPFS transfers use `anonymousIpfsTransferFee`. The SDK checks the matching live fee before submitting a transfer and throws a descriptive error if the reserve is insufficient.
+The protocol uses a **prepaid-fee-for-all-operations** model. Each unlinkable account holds a **prepaid fee reserve** (a pot in the active fee token), and every relay-submitted operation debits a fixed fee from it:
+
+| operation | fee |
+|---|---|
+| create account | `anonymousCreateAccountFee` (charged once, at creation) |
+| update auth keys | `anonymousUpdateKeysFee` |
+| transfer (→ public / → anonymous) | `anonymousInlineTransferFee` or `anonymousIpfsTransferFee` |
+| apply pending | `anonymousApplyPendingFee` |
+| withdraw | `anonymousInlineWithdrawFee` or `anonymousIpfsWithdrawFee` |
+
+The relay fronts the gas for these operations and is reimbursed from the pot. **User-funded raw-tx operations do _not_ charge a prepaid fee** - `deposit`, `depositFees` (top-up), `withdrawFees`, and `withdrawAllFees` are signed and paid for by the user's own wallet, so there is nothing to reimburse.
+
+The reserve is seeded at [account creation](#createaccountauthwallet-accountid-elgamalpublickey-options) (`initialFeeDeposit − anonymousCreateAccountFee`) and topped up with `depositFees`. Transfers additionally pre-check the reserve before submitting and throw a descriptive error if it can't cover the fee.
+
+**Fee token.** There is one active fee token for the whole protocol, set by the admin and read via `getFeeToken()`. It can be an **ERC-20** (the default) or **native ETH** (`address(0)`) - fee amounts and the prepaid pot are denominated in whichever it is. Using a native-ETH fee token requires opting in with `enableNativeFeeToken: true` in the client config (see [createAccount](#createaccountauthwallet-accountid-elgamalpublickey-options)).
 
 #### `getFeeToken()`
 
 Returns the currently configured fee token address (checksummed). `ethers.ZeroAddress` represents native currency. `depositFees` deposits must use this token. The fee token can be rotated by the protocol over time, but existing balances in old fee tokens remain withdrawable.
 
-#### Anonymous transfer fee getters
+#### Fee-config getters
 
-- `getAnonymousInlineTransferFee()` returns the fee deducted for an inline anonymous transfer.
-- `getAnonymousIpfsTransferFee()` returns the fee deducted for an IPFS anonymous transfer.
-- `getNonAnonymousTransferFee()` exposes the shared non-anonymous fee through Fairycloak's view API.
+All getters read live from the protocol and return **raw units of the active fee token** (`0n` when a pathway has no configured fee).
 
-Each getter returns raw units of the active fee token and returns `0n` when that pathway has no configured fee.
+Per-operation fees:
+
+- `getAnonymousCreateAccountFee()` - one-time account-creation fee.
+- `getAnonymousMinimumInitialFeeDeposit()` - minimum `initialFeeDeposit` accepted at creation.
+- `getAnonymousUpdateKeysFee()` - auth-key update.
+- `getAnonymousApplyPendingFee()` - apply-pending.
+- `getAnonymousInlineTransferFee()` / `getAnonymousIpfsTransferFee()` - inline / IPFS transfer.
+- `getAnonymousInlineWithdrawFee()` / `getAnonymousIpfsWithdrawFee()` - inline / IPFS withdraw.
+- `getNonAnonymousTransferFee()` - the shared non-anonymous transfer fee.
 
 #### `getPrepaidFeeBalance(accountId, token)`
 
@@ -491,11 +527,11 @@ if (feeBalance < requiredFee) {
 
 #### `withdrawFees(authWallet, accountId, { token, destination, amount }, options?)`
 
-Withdraws a specific amount from the prepaid fee reserve for a given fee token. The relay pays gas. Use this to reclaim fees from a specific (possibly historical) fee token.
+Reclaims a specific amount from the prepaid fee reserve for a given fee token. **User-funded raw-tx** model (like `deposit`/`depositFees`): the anonymous signer authorises the withdrawal via EIP-712 and the same wallet signs and funds the outer transaction, so **the user pays gas and no prepaid fee is charged** — the full amount is returned. Use this to reclaim a specific (possibly historical) fee token.
 
 #### `withdrawAllFees(authWallet, accountId, { destination }, options?)`
 
-Withdraws all prepaid fee balances across all (including historical) fee tokens to `destination`. The relay pays gas.
+Drains all prepaid fee balances across all (including historical) fee tokens to `destination`. Same user-funded raw-tx model as `withdrawFees` — the user pays gas, no prepaid fee.
 
 #### Request Tracking
 
@@ -599,8 +635,9 @@ const balance = await client.getBalance(
 );
 console.log("Available:", balance.available, "Pending:", balance.pending);
 
-// 4. Top up the prepaid fee reserve if needed (user pays gas)
-// transferToPublic/transferToAnonymous deduct a protocol fee from this reserve.
+// 4. Top up the prepaid fee reserve if needed (user pays gas; no fee on the top-up itself)
+// The reserve was seeded at account creation; every relay op (update-keys/transfer/apply/withdraw)
+// draws a fixed fee from it. Here we make sure it can cover the next transfer.
 const feeToken = await client.getFeeToken();
 const inlineFee = await client.getAnonymousInlineTransferFee();
 const feeBalance = await client.getPrepaidFeeBalance(accountId, feeToken);
@@ -613,7 +650,7 @@ if (feeBalance < inlineFee) {
   await client.waitForRequest(feeResult.request_id);
 }
 
-// 5. Transfer to a public address (relay pays gas)
+// 5. Transfer to a public address (relay pays gas; a transfer fee is drawn from the prepaid reserve)
 const transferResult = await client.transferToPublic(wallet, accountId, {
   recipient: "0xRecipientAddress",
   token: tokenAddress,
@@ -622,7 +659,7 @@ const transferResult = await client.transferToPublic(wallet, accountId, {
 });
 await client.waitForRequest(transferResult.request_id);
 
-// 6. Withdraw (relay pays gas)
+// 6. Withdraw (relay pays gas; a withdraw fee is drawn from the prepaid reserve)
 const withdrawResult = await client.withdraw(wallet, accountId, {
   destination: wallet.address,
   token: tokenAddress,

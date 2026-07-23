@@ -32,6 +32,10 @@ const WITHDRAW_ALL_FEES_INTERFACE = new ethers.Interface([
   "function withdrawAllFees(string accountId, address destination, uint256 authNonce, uint256 deadline, bytes signature) external",
 ]);
 
+const CREATE_ACCOUNT_INTERFACE = new ethers.Interface([
+  "function createAnonymousConfidentialAccount(string accountId, bytes elgamalPubkey, address[] authSigners, bytes32 clientRequestId, address feePayer, address feeToken, uint256 initialFeeDeposit, uint256 deadline, bytes signature) external payable",
+]);
+
 /**
  * Internal helper to parse values as BigInt, handling hex strings and null/undefined.
  * @private
@@ -73,8 +77,11 @@ export class AnonymousTransferClient {
    * @param {string} [config.ipfsUploadUrl] - StableTrust IPFS upload endpoint used when `offchainZKP: true`
    * @param {string} [config.ipfsApiKey] - Optional bearer token for the StableTrust IPFS upload endpoint
    * @param {string} [config.ipfsGatewayUrl] - Optional read gateway base URL, e.g. "https://ipfs.example.com"
+   * @param {boolean} [config.enableNativeFeeToken=false] - Opt-in flag for native-ETH fee tokens. When the
+   *   protocol fee token is native ETH (`address(0)`), account creation uses a user-funded raw tx. This is
+   *   kept **disabled by default**
    */
-  constructor({ fairycloakUrl, diamondAddress, chainId, rpcUrl, apiKey, ipfsUploadUrl, ipfsApiKey, ipfsGatewayUrl } = {}) {
+  constructor({ fairycloakUrl, diamondAddress, chainId, rpcUrl, apiKey, ipfsUploadUrl, ipfsApiKey, ipfsGatewayUrl, enableNativeFeeToken = false } = {}) {
     if (!fairycloakUrl) throw new Error("fairycloakUrl is required");
     if (!chainId) throw new Error("chainId is required");
     if (!rpcUrl) throw new Error("rpcUrl is required");
@@ -95,6 +102,7 @@ export class AnonymousTransferClient {
     this.ipfsUploadUrl = ipfsUploadUrl || null;
     this.ipfsApiKey = ipfsApiKey || null;
     this.ipfsGatewayUrl = ipfsGatewayUrl ? ipfsGatewayUrl.replace(/\/$/, "") : null;
+    this.enableNativeFeeToken = Boolean(enableNativeFeeToken);
 
     this.provider = new ethers.JsonRpcProvider(rpcUrl);
     this._wasmModule = null;
@@ -606,20 +614,29 @@ export class AnonymousTransferClient {
   /**
    * Create a new anonymous account via Fairycloak.
    *
-   * The relay submits the `createAnonymousAccount` transaction and pays gas.
+   * Two submission modes, chosen automatically by the active fee token:
+   * - **ERC-20 fee token** (default): the relay submits `createAnonymousConfidentialAccount`
+   *   and pays gas; the fee payer approves the diamond so it can pull the ERC-20 deposit.
+   * - **Native ETH fee token** (`feeToken == address(0)`): ETH can't be pulled with
+   *   `transferFrom` and the contract requires `msg.sender == feePayer`, so the fee payer
+   *   signs and funds the payable tx itself (`msg.value == initialFeeDeposit`) and the raw
+   *   bytes are sent to `/v1/anonymous/accounts/raw-tx`. `authWallet` pays the gas.
    *
-   * @param {ethers.Wallet|ethers.Signer} authWallet - Initial auth signer
+   * @param {ethers.Wallet|ethers.Signer} authWallet - Initial auth signer (also funds the tx for native fees)
    * @param {string} accountId - Caller-chosen account ID. Must be a non-empty, case-sensitive,
    *   alphanumeric string of at most 20 characters.
    * @param {string} elgamalPublicKey - ElGamal public key as base64 or "0x"-prefixed hex (32 bytes)
    * @param {Object} [options]
    * @param {number} [options.deadlineOffset=3600] - Deadline in seconds from now
+   * @param {bigint|string|number} [options.initialFeeDeposit] - Override the initial deposit (defaults to the contract minimum)
+   * @param {bigint} [options.gasLimit=1000000n] - Gas limit for the native-fee raw tx (unused for ERC-20)
    * @returns {Promise<{request_id:string, tx_hash:string, status:string, action:string}>}
    * @throws {Error} If `accountId` doesn't follow the anonymous account ID rules (see class docs).
    */
   async createAccount(authWallet, accountId, elgamalPublicKey, options = {}) {
     validateAnonymousAccountId(accountId, "accountId");
-    const { deadlineOffset = DEFAULT_DEADLINE_OFFSET } = options;
+    const { deadlineOffset = DEFAULT_DEADLINE_OFFSET, gasLimit = 1000000n } =
+      options;
     try {
       const authAddress = await authWallet.getAddress();
 
@@ -655,47 +672,12 @@ export class AnonymousTransferClient {
           `initialFeeDeposit (${initialFeeDeposit}) is below the create-account fee (${createFee})`,
         );
 
-      if (feeToken === ethers.ZeroAddress) {
-        throw new Error(
-          "Active fee token is native (address 0); relayer-submitted create is unsupported for native fees " +
-            "because the contract requires the fee payer to submit the tx. Configure an ERC-20 fee token or use a raw-tx create path.",
-        );
-      }
+      const isNative = feeToken === ethers.ZeroAddress;
 
-      if (initialFeeDeposit > 0n) {
-        const walletWithProvider = authWallet.connect
-          ? authWallet.connect(this.provider)
-          : authWallet;
-        const tokenContract = new ethers.Contract(
-          feeToken,
-          ERC20_ABI,
-          walletWithProvider,
-        );
-        const [balance, allowance] = await Promise.all([
-          tokenContract.balanceOf(feePayer),
-          tokenContract.allowance(feePayer, this.diamondAddress),
-        ]);
-        if (balance < initialFeeDeposit)
-          throw new Error(
-            `Insufficient fee-token balance for initial deposit. Required: ${initialFeeDeposit}, available: ${balance} (token ${feeToken})`,
-          );
-        if (allowance < initialFeeDeposit) {
-          const approveTx = await tokenContract.approve(
-            this.diamondAddress,
-            ethers.MaxUint256,
-          );
-          const receipt = await approveTx.wait();
-          if (!receipt || receipt.status === 0)
-            throw new Error("Fee token approval failed");
-        }
-      }
-
-      // EIP-712 struct hashes for dynamic fields
+      // EIP-712 AnonymousCreate signature - identical for both fee-token modes
+      // (the digest already binds feePayer/feeToken/initialFeeDeposit).
       const initialSignersHash = ethers.keccak256(
-        ethers.AbiCoder.defaultAbiCoder().encode(
-          ["address[]"],
-          [[authAddress]],
-        ),
+        ethers.AbiCoder.defaultAbiCoder().encode(["address[]"], [[authAddress]]),
       );
       const elgamalPubkeyHash = ethers.keccak256(elgamalHex);
 
@@ -724,6 +706,81 @@ export class AnonymousTransferClient {
       };
 
       const signature = await authWallet.signTypedData(domain, types, value);
+
+      if (isNative) {
+        // Native-ETH fee-token support is implemented but gated off by default.
+        if (!this.enableNativeFeeToken)
+          throw new Error(
+            "Active fee token is native ETH (address 0), but native fee-token support is disabled. " +
+              "Construct the client with { enableNativeFeeToken: true } to opt in, or configure an ERC-20 fee token.",
+          );
+        // Native ETH fee token: user-funded raw-tx submission 
+        // ETH can't be pulled with transferFrom and the contract requires
+        // msg.sender == feePayer, so the fee payer signs and funds the payable
+        // createAnonymousConfidentialAccount tx (msg.value == initialFeeDeposit);
+        // Fairycloak validates + broadcasts the raw bytes unchanged.
+        if (initialFeeDeposit > 0n) {
+          const nativeBalance = await this.provider.getBalance(feePayer);
+          if (nativeBalance < initialFeeDeposit)
+            throw new Error(
+              `Insufficient native balance for initial deposit. Required: ${initialFeeDeposit}, available: ${nativeBalance}`,
+            );
+        }
+        const calldata = CREATE_ACCOUNT_INTERFACE.encodeFunctionData(
+          "createAnonymousConfidentialAccount",
+          [
+            accountId,
+            elgamalHex,
+            [authAddress],
+            clientRequestId,
+            feePayer,
+            feeToken,
+            initialFeeDeposit,
+            BigInt(deadline),
+            signature,
+          ],
+        );
+        const signedTx = await this._signRawDiamondTx(
+          authWallet,
+          calldata,
+          initialFeeDeposit,
+          gasLimit,
+        );
+        return await this._fetch("POST", "/v1/anonymous/accounts/raw-tx", {
+          raw_tx: signedTx,
+        });
+      }
+
+      //  ERC-20 fee token: managed (relayer-submitted) creation 
+      // The fee payer funds an initial deposit in the fee token and approves the
+      // diamond so it can pull it into escrow; the relay submits + pays gas.
+      if (initialFeeDeposit > 0n) {
+        const walletWithProvider = authWallet.connect
+          ? authWallet.connect(this.provider)
+          : authWallet;
+        const tokenContract = new ethers.Contract(
+          feeToken,
+          ERC20_ABI,
+          walletWithProvider,
+        );
+        const [balance, allowance] = await Promise.all([
+          tokenContract.balanceOf(feePayer),
+          tokenContract.allowance(feePayer, this.diamondAddress),
+        ]);
+        if (balance < initialFeeDeposit)
+          throw new Error(
+            `Insufficient fee-token balance for initial deposit. Required: ${initialFeeDeposit}, available: ${balance} (token ${feeToken})`,
+          );
+        if (allowance < initialFeeDeposit) {
+          const approveTx = await tokenContract.approve(
+            this.diamondAddress,
+            ethers.MaxUint256,
+          );
+          const receipt = await approveTx.wait();
+          if (!receipt || receipt.status === 0)
+            throw new Error("Fee token approval failed");
+        }
+      }
 
       return await this._fetch("POST", "/v1/anonymous/accounts", {
         account_id: accountId,
