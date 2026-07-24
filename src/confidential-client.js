@@ -656,6 +656,7 @@ export class ConfidentialTransferClient {
         );
       }
 
+      const depositOverrides = {};
       if (allowance < BigInt(amount)) {
         const approveTx = await tokenContract
           .connect(wallet)
@@ -665,11 +666,17 @@ export class ConfidentialTransferClient {
         if (!approveReceipt || approveReceipt.status === 0) {
           throw new Error("Token approval failed");
         }
+        // Pin the deposit nonce to (approve nonce + 1). The approve was just
+        // broadcast from this same EOA; letting ethers resolve the deposit nonce
+        // via getTransactionCount can still return the pre-approve count on a fast
+        // node and assign the deposit the SAME nonce as the approve, which the node
+        // rejects as "nonce too low" (NONCE_EXPIRED).
+        depositOverrides.nonce = approveTx.nonce + 1;
       }
       // Perform deposit
       const depositTx = await this.contract
         .connect(wallet)
-        .deposit(tokenAddress, depositAmount);
+        .deposit(tokenAddress, depositAmount, depositOverrides);
 
       const receipt = await depositTx.wait();
       if (!receipt || receipt.status === 0) {
