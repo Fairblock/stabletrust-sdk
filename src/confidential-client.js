@@ -890,8 +890,6 @@ export class ConfidentialTransferClient {
             recipient: recipientAddress.toLowerCase(),
             token: tokenSymbol,
             tokenAddress,
-            amount: transferAmount.toString(),
-            amountInWei: true,
           };
 
           const queuedFields =
