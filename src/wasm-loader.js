@@ -50,7 +50,7 @@ export async function initializeWasm(input) {
 
       if (input) {
         // User provided custom input
-        await init(input);
+        await init({ module_or_path: input });
       } else if (isNode) {
         // Node.js: Load from filesystem
         const fs = await import("fs");
@@ -65,11 +65,11 @@ export async function initializeWasm(input) {
         );
         const wasmBuffer = fs.readFileSync(wasmPath);
 
-        await init(wasmBuffer);
+        await init({ module_or_path: wasmBuffer });
       } else {
         // Browser: Let the generated code handle it automatically
         // It will use new URL(..., import.meta.url) which bundlers handle correctly
-        await init();
+        await init({ module_or_path: undefined });
       }
 
       isInitialized = true;

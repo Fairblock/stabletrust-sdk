@@ -14,6 +14,16 @@ declare module "@fairblock/stabletrust" {
     diamondAddress?: string;
     /** Optional API key for Fairycloak */
     apiKey?: string;
+    /** StableTrust IPFS upload endpoint, used when a transfer sets `offchainZKP: true`.
+     * Falls back to `STABLETRUST_IPFS_UPLOAD_URL` in Node.js when omitted.
+     */
+    ipfsUploadUrl?: string;
+    /** Optional bearer token for the StableTrust IPFS upload endpoint.
+     * Falls back to `STABLETRUST_IPFS_API_KEY` in Node.js when omitted.
+     */
+    ipfsApiKey?: string;
+    /** Optional read gateway base URL, e.g. `https://ipfs.example.com`. */
+    ipfsGatewayUrl?: string;
   }
 
   export interface AnonymousAccountInfo {
@@ -81,6 +91,11 @@ declare module "@fairblock/stabletrust" {
     amount?: bigint | string | number;
     /** Recipient ElGamal public key (base64). Auto-resolved from the chain if omitted. */
     destinationPublicKey?: string;
+    /**
+     * When true, the ZK proof is uploaded to StableTrust IPFS and only its CID is put on-chain,
+     * instead of sending the full proof inline. Requires `ipfsUploadUrl`/`ipfsApiKey` config or the StableTrust IPFS environment variables.
+     */
+    offchainZKP?: boolean;
   }
 
   export interface TransferToAnonymousParams {
@@ -94,6 +109,11 @@ declare module "@fairblock/stabletrust" {
     amount?: bigint | string | number;
     /** Recipient ElGamal public key (base64). Auto-resolved from the chain if omitted. */
     destinationPublicKey?: string;
+    /**
+     * When true, the ZK proof is uploaded to StableTrust IPFS and only its CID is put on-chain,
+     * instead of sending the full proof inline. Requires `ipfsUploadUrl`/`ipfsApiKey` config or the StableTrust IPFS environment variables.
+     */
+    offchainZKP?: boolean;
   }
 
   export interface WithdrawParams {
@@ -105,6 +125,11 @@ declare module "@fairblock/stabletrust" {
     proof?: string;
     /** ElGamal private key (base64) for auto-proof generation. Contract scale is derived automatically. */
     elGamalPrivateKey?: string;
+    /**
+     * When true, the ZK proof is uploaded to StableTrust IPFS and only its CID is put on-chain,
+     * instead of sending the full proof inline. Requires `ipfsUploadUrl`/`ipfsApiKey` config or `STABLETRUST_IPFS_UPLOAD_URL` / `STABLETRUST_IPFS_API_KEY`. Defaults to false.
+     */
+    offchainZKP?: boolean;
   }
 
   export interface AnonymousAccountBalance {
@@ -263,14 +288,17 @@ declare module "@fairblock/stabletrust" {
      */
     getFeeToken(): Promise<string>;
 
-    /**
-     * Get the protocol fee amount in raw ERC-20 units of the fee token.
-     * This is the amount deducted per anonymous transfer. Returns 0n if no fee is set.
-     */
-    getFeeAmount(): Promise<bigint>;
+    /** Get the fixed fee used by all non-anonymous confidential transfers. */
+    getNonAnonymousTransferFee(): Promise<bigint>;
+
+    /** Get the fixed fee used by anonymous transfers whose proof is stored on IPFS. */
+    getAnonymousIpfsTransferFee(): Promise<bigint>;
+
+    /** Get the fixed fee used by anonymous transfers whose proof is submitted inline. */
+    getAnonymousInlineTransferFee(): Promise<bigint>;
 
     /**
-     * Get the prepaid fee balance for an anonymous account and token (raw ERC-20 units).
+     * Get the prepaid fee balance for an anonymous account and token (raw fee-token units).
      * Use `getFeeToken()` to get the active fee token address.
      */
     getPrepaidFeeBalance(accountId: string, token: string): Promise<bigint>;
@@ -283,9 +311,10 @@ declare module "@fairblock/stabletrust" {
      * Handles ERC-20 approval automatically.
      *
      * The fee token is read from the contract — use `getFeeToken()` to see it.
-     * Use `getFeeAmount()` to see how much is deducted per transfer.
+     * Use `getAnonymousInlineTransferFee()` or `getAnonymousIpfsTransferFee()`
+     * to see how much is deducted for the selected proof path.
      *
-     * @param amount Amount in raw ERC-20 units of the active fee token
+     * @param amount Amount in raw units of the active fee token (wei for native currency)
      */
     depositFees(
       authWallet: ethers.Wallet,
@@ -458,7 +487,7 @@ declare module "@fairblock/stabletrust" {
    * Balance information
    */
   export interface Balance {
-    amount: number;
+    amount: bigint;
     ciphertext: string | null;
   }
 
@@ -466,7 +495,7 @@ declare module "@fairblock/stabletrust" {
    * Confidential balance summary
    */
   export interface ConfidentialBalance {
-    amount: number;
+    amount: bigint;
     available: Balance;
     pending: Balance;
   }
@@ -490,6 +519,14 @@ declare module "@fairblock/stabletrust" {
    * Transfer options
    */
   export interface TransferOptions {
+    /**
+     * When true, upload the ABI-encoded transfer proof to StableTrust IPFS and
+     * submit only the bare CID bytes on-chain with offchainZKP=true.
+     * Defaults to true on Tempo (chainId 42431) for backwards compatibility,
+     * and false on other chains.
+     */
+    offchainZKP?: boolean;
+    /** @deprecated Use offchainZKP instead. */
     useOffchainVerify?: boolean;
     waitForFinalization?: boolean;
   }
@@ -498,8 +535,25 @@ declare module "@fairblock/stabletrust" {
    * Withdraw options
    */
   export interface WithdrawOptions {
+    /**
+     * When true, upload the ABI-encoded withdraw proof to StableTrust IPFS and
+     * submit only the bare CID bytes on-chain with offchainZKP=true.
+     * Defaults to true on Tempo (chainId 42431) for backwards compatibility,
+     * and false on other chains.
+     */
+    offchainZKP?: boolean;
+    /** @deprecated Use offchainZKP instead. */
     useOffchainVerify?: boolean;
     waitForFinalization?: boolean;
+  }
+
+  export interface StableTrustIpfsOptions {
+    /** StableTrust IPFS upload endpoint. Falls back to STABLETRUST_IPFS_UPLOAD_URL in Node.js. */
+    ipfsUploadUrl?: string;
+    /** Optional bearer token for the StableTrust IPFS upload endpoint. Falls back to STABLETRUST_IPFS_API_KEY in Node.js. */
+    ipfsApiKey?: string;
+    /** StableTrust backend API base URL for persisting request rows. Defaults to the production API. */
+    apiBaseUrl?: string;
   }
 
   /**
@@ -512,7 +566,7 @@ declare module "@fairblock/stabletrust" {
      * @param rpcUrl RPC endpoint URL
      * @param chainId Chain ID (uses default Stabletrust contract for known networks)
      */
-    constructor(rpcUrl: string, chainId: number);
+    constructor(rpcUrl: string, chainId: number, options?: StableTrustIpfsOptions);
 
     /**
      * Create a new ConfidentialTransferClient
@@ -520,7 +574,7 @@ declare module "@fairblock/stabletrust" {
      * @param contractAddress Confidential transfer contract address
      * @param chainId Chain ID
      */
-    constructor(rpcUrl: string, contractAddress: string, chainId: number);
+    constructor(rpcUrl: string, contractAddress: string, chainId: number, options?: StableTrustIpfsOptions);
 
     /**
      * Get account information from the contract
@@ -574,7 +628,7 @@ declare module "@fairblock/stabletrust" {
       senderWallet: ethers.Wallet | ethers.Signer,
       recipientAddress: string,
       tokenAddress: string,
-      amount: number,
+      amount: bigint | string | number,
       options?: TransferOptions,
     ): Promise<ethers.ContractTransactionReceipt>;
 
@@ -588,14 +642,21 @@ declare module "@fairblock/stabletrust" {
     withdraw(
       wallet: ethers.Wallet | ethers.Signer,
       tokenAddress: string,
-      amount: number,
+      amount: bigint | string | number,
       options?: WithdrawOptions,
     ): Promise<ethers.ContractTransactionReceipt>;
 
-    /**
-     * Get the current fee amount for confidential transfers
-     */
-    getFeeAmount(): Promise<bigint>;
+    /** Get the currently configured fee token. address(0) means native currency. */
+    getFeeToken(): Promise<string>;
+
+    /** Get the fixed fee used by all non-anonymous confidential transfers. */
+    getNonAnonymousTransferFee(): Promise<bigint>;
+
+    /** Get the fixed fee used by anonymous transfers whose proof is stored on IPFS. */
+    getAnonymousIpfsTransferFee(): Promise<bigint>;
+
+    /** Get the fixed fee used by anonymous transfers whose proof is submitted inline. */
+    getAnonymousInlineTransferFee(): Promise<bigint>;
 
     /**
      * Get the public ERC20 balance for an address (for comparison with confidential balance)
@@ -674,6 +735,12 @@ declare module "@fairblock/stabletrust" {
   /**
    * Contract ABI
    */
+  export const TRANSFER_CONFIDENTIAL_SIGNATURE: string;
+  export const WITHDRAW_CONFIDENTIAL_SIGNATURE: string;
+  export const FEE_TOKEN_SIGNATURE: string;
+  export const NON_ANONYMOUS_TRANSFER_FEE_SIGNATURE: string;
+  export const ANONYMOUS_IPFS_TRANSFER_FEE_SIGNATURE: string;
+  export const ANONYMOUS_INLINE_TRANSFER_FEE_SIGNATURE: string;
   export const CONTRACT_ABI: any[];
 
   /**

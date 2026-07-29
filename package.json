@@ -1,6 +1,6 @@
 {
   "name": "@fairblock/stabletrust",
-  "version": "2.0.7",
+  "version": "2.0.9",
   "description": "SDK for confidential transfers using homomorphic encryption and zero-knowledge proofs",
   "main": "src/index.js",
   "types": "src/index.d.ts",
@@ -28,7 +28,10 @@
     "url": "https://github.com/Fairblock/stabletrust-sdk"
   },
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "node --test test/*.test.mjs",
+    "test:live": "node --test test/ipfs-live.mjs",
+    "check:abi": "node scripts/check-contract-abi.mjs",
+    "check": "npm run check:abi && npm test"
   },
   "keywords": [
     "confidential",
@@ -41,10 +44,14 @@
   "author": "",
   "license": "Apache-2.0",
   "dependencies": {
+    "@noble/bls12-381": "^1.4.0",
+    "@noble/hashes": "^1.3.2",
+    "@stablelib/chacha20poly1305": "^1.0.1",
+    "axios": "^1.16.0",
     "dotenv": "^17.2.3",
     "ethers": "^6.16.0"
   },
   "engines": {
-    "node": ">=16.0.0"
+    "node": ">=18.0.0"
   }
 }

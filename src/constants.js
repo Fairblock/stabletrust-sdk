@@ -2,16 +2,42 @@
  * Contract ABIs and Constants
  */
 
+const CREATE_CONFIDENTIAL_ACCOUNT_SIGNATURE = "createConfidentialAccount(bytes)";
+const DEPOSIT_SIGNATURE = "deposit(address,uint256)";
+const GET_ACCOUNT_CORE_SIGNATURE = "getAccountCore(address)";
+const GET_AVAILABLE_SIGNATURE = "getAvailable(address,address)";
+const GET_PENDING_SIGNATURE = "getPending(address,address)";
+const APPLY_PENDING_SIGNATURE = "applyPending()";
+
+export const TRANSFER_CONFIDENTIAL_SIGNATURE = "transferConfidential(address,address,bytes,bool)";
+export const WITHDRAW_CONFIDENTIAL_SIGNATURE = "withdraw(address,uint256,bytes,bool)";
+export const FEE_TOKEN_SIGNATURE = "feeToken()";
+export const NON_ANONYMOUS_TRANSFER_FEE_SIGNATURE = "nonAnonymousTransferFee()";
+export const ANONYMOUS_IPFS_TRANSFER_FEE_SIGNATURE = "anonymousIpfsTransferFee()";
+export const ANONYMOUS_INLINE_TRANSFER_FEE_SIGNATURE = "anonymousInlineTransferFee()";
+
 export const CONTRACT_ABI = [
-  "function createConfidentialAccount(bytes elgamalPubkey) external",
-  "function deposit(address token, uint256 plainAmount) external",
-  "function getAccountCore(address ownerAddr) external view returns ((bool exists, bool finalized, bool pendingAction, uint256 txId, bytes elgamalPubkey, uint64 pendingCreditCounter))",
-  "function getAvailable(address ownerAddr, address token) external view returns (bytes c1, bytes c2)",
-  "function getPending(address ownerAddr, address token) external view returns (bytes c1, bytes c2)",
-  "function transferConfidential(address recipient, address token, bytes proof) external payable",
-  "function withdraw(address token, uint256 plainAmount, bytes proof) external",
-  "function applyPending() external",
-  "function feeAmount() external view returns (uint256)",
+  `function ${CREATE_CONFIDENTIAL_ACCOUNT_SIGNATURE} external`,
+  `function ${DEPOSIT_SIGNATURE} external`,
+  `function ${GET_ACCOUNT_CORE_SIGNATURE} external view returns ((bool exists, bool finalized, bool pendingAction, uint256 txId, bytes elgamalPubkey, uint64 pendingCreditCounter))`,
+  `function ${GET_AVAILABLE_SIGNATURE} external view returns (bytes c1, bytes c2)`,
+  `function ${GET_PENDING_SIGNATURE} external view returns (bytes c1, bytes c2)`,
+  `function ${TRANSFER_CONFIDENTIAL_SIGNATURE} external payable`,
+  `function ${WITHDRAW_CONFIDENTIAL_SIGNATURE} external`,
+  `function ${APPLY_PENDING_SIGNATURE} external`,
+  `function ${FEE_TOKEN_SIGNATURE} external view returns (address)`,
+  `function ${NON_ANONYMOUS_TRANSFER_FEE_SIGNATURE} external view returns (uint256)`,
+  `function ${ANONYMOUS_IPFS_TRANSFER_FEE_SIGNATURE} external view returns (uint256)`,
+  `function ${ANONYMOUS_INLINE_TRANSFER_FEE_SIGNATURE} external view returns (uint256)`,
+  // Events used to extract request/tx IDs from receipts for backend persistence
+  "event DepositRequested(address indexed ownerAddr, uint256 indexed txId, address indexed token, uint256 plainAmount, bytes availableShare, bytes pendingShare)",
+  "event DepositProcessed(address indexed ownerAddr, uint256 indexed txId, bool ok, string errorMsg, address token, bytes newAvailC1, bytes newAvailC2, uint64 pendingCreditCounter, uint64 minimumPendingCreditCounter, bytes availableShare, bytes pendingShare)",
+  "event TransferRequested(address indexed sender, address indexed recipient, uint256 indexed txId, address token, bytes proof, uint256 feePaid, bool useOffchainVerify, bytes senderPubkey, bytes recipientPubkey, bytes senderCurrC1, bytes senderCurrC2)",
+  "event TransferProcessed(address indexed sender, address indexed recipient, uint256 indexed txId, bool ok, string errorMsg, address token, bytes senderNewAvailC1, bytes senderNewAvailC2, bytes recipientNewPendingC1, bytes recipientNewPendingC2, uint64 senderPendingCreditCounter, bytes senderAvailableShare, uint64 recipientPendingCreditCounter, uint64 recipientMinimumPendingCreditCounter, bytes recipientPendingShare)",
+  "event ApplyPendingRequested(address indexed ownerAddr, uint256 indexed txId)",
+  "event ApplyPendingProcessed(address indexed ownerAddr, uint256 indexed txId, bool ok, string errorMsg, address[] tokens, bytes[] newAvailC1, bytes[] newAvailC2, uint64 pendingCreditCounter, uint64 minimumPendingCreditCounter, bytes availableShare)",
+  "event WithdrawRequested(address indexed ownerAddr, uint256 indexed txId, address token, uint256 plainAmount, bytes proof, bool useOffchainVerify, bytes userPubkey, bytes userCurrC1, bytes userCurrC2)",
+  "event WithdrawProcessed(address indexed ownerAddr, uint256 indexed txId, bool ok, string errorMsg, address token, uint256 plainAmount, bytes newAvailC1, bytes newAvailC2, uint64 pendingCreditCounter, uint64 minimumPendingCreditCounter, bytes availableShare)",
 ];
 
 export const ERC20_ABI = [
@@ -19,6 +45,7 @@ export const ERC20_ABI = [
   "function allowance(address owner, address spender) external view returns (uint256)",
   "function balanceOf(address account) external view returns (uint256)",
   "function decimals() external view returns (uint8)",
+  "function symbol() external view returns (string)",
 ];
 
 export const TEMPO_FEE_TOKEN_ADDRESS =
