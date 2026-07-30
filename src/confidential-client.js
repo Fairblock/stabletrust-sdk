@@ -126,6 +126,7 @@ export class ConfidentialTransferClient {
     const payload = {
       chainKey: CHAIN_KEY_BY_ID[this.config.chainId] || String(this.config.chainId),
       chainId: this.config.chainId,
+      applicationName: "SDK",
       ...data,
     };
     createRequest(payload, apiBaseUrl).catch((err) => {
