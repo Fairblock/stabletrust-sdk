@@ -17,12 +17,37 @@ export class ControlledConfidentialTransferClient extends ConfidentialTransferCl
 
     super(rpcUrl, contractAddressOrChainId, chainId, options);
     this.autoApplyPending = resolvedOptions.autoApplyPending !== false;
+    const configuredSafetyBps = Number(resolvedOptions.gasLimitSafetyBps ?? 2500);
+    if (!Number.isFinite(configuredSafetyBps) || configuredSafetyBps < 0) {
+      throw new Error("gasLimitSafetyBps must be a non-negative finite number");
+    }
+    this.gasLimitSafetyBps = BigInt(Math.trunc(configuredSafetyBps));
   }
 
   async _applyPendingIfNeeded(wallet, privateKey, tokenAddress, actionLabel) {
     if (!this.autoApplyPending) return false;
     await super._applyPendingIfNeeded(wallet, privateKey, tokenAddress, actionLabel);
     return true;
+  }
+
+  /**
+   * Estimate gas immediately before broadcast and add configurable headroom.
+   * Some public RPCs return estimates with too little margin for state that can
+   * change between estimation and execution. Passing an explicit padded limit
+   * prevents otherwise-valid CTS operations from failing with OutOfGas.
+   */
+  async _submitWithGasSafety(contract, methodName, args = [], overrides = {}) {
+    const method = contract[methodName];
+    if (typeof method !== "function" || typeof method.estimateGas !== "function") {
+      throw new Error(`Contract method ${methodName} is unavailable`);
+    }
+    if (overrides.gasLimit !== undefined) {
+      return await method(...args, overrides);
+    }
+    const estimate = await method.estimateGas(...args, overrides);
+    const gasLimit =
+      (estimate * (10000n + this.gasLimitSafetyBps) + 9999n) / 10000n;
+    return await method(...args, { ...overrides, gasLimit });
   }
 
   /**
@@ -36,9 +61,12 @@ export class ControlledConfidentialTransferClient extends ConfidentialTransferCl
     const account = await this.getAccountInfo(address);
     if (account.exists) return { created: false, keys, tx: null, account };
 
-    const tx = await this.contract
-      .connect(wallet)
-      .createConfidentialAccount(Buffer.from(keys.publicKey, "base64"));
+    const contract = this.contract.connect(wallet);
+    const tx = await this._submitWithGasSafety(
+      contract,
+      "createConfidentialAccount",
+      [Buffer.from(keys.publicKey, "base64")],
+    );
     return { created: true, keys, tx, account };
   }
 
@@ -67,7 +95,11 @@ export class ControlledConfidentialTransferClient extends ConfidentialTransferCl
     }
 
     const plainAmount = toContractScale(rawAmount, decimals);
-    return await this.contract.connect(wallet).deposit(tokenAddress, plainAmount);
+    return await this._submitWithGasSafety(
+      this.contract.connect(wallet),
+      "deposit",
+      [tokenAddress, plainAmount],
+    );
   }
 
   /** Submit a normal-to-normal confidential transfer after proof generation. */
@@ -131,15 +163,21 @@ export class ControlledConfidentialTransferClient extends ConfidentialTransferCl
       offchainZKP,
     );
     const overrides = await this._prepareNonAnonymousTransferFee(wallet);
-    return await this.contract
-      .connect(wallet)
-      .transferConfidential(recipientAddress, tokenAddress, proofArg, offchainZKP, overrides);
+    return await this._submitWithGasSafety(
+      this.contract.connect(wallet),
+      "transferConfidential",
+      [recipientAddress, tokenAddress, proofArg, offchainZKP],
+      overrides,
+    );
   }
 
   /** Submit an explicit applyPending transaction and return the tx response. */
   async submitApplyPending(wallet) {
     if (!wallet) throw new Error("Wallet is required");
-    return await this.contract.connect(wallet).applyPending();
+    return await this._submitWithGasSafety(
+      this.contract.connect(wallet),
+      "applyPending",
+    );
   }
 
   /** Submit a withdrawal after proof generation and return immediately. */
@@ -189,9 +227,11 @@ export class ControlledConfidentialTransferClient extends ConfidentialTransferCl
       "withdraw-proof.bin",
       offchainZKP,
     );
-    return await this.contract
-      .connect(wallet)
-      .withdraw(tokenAddress, withdrawAmount, proofArg, offchainZKP);
+    return await this._submitWithGasSafety(
+      this.contract.connect(wallet),
+      "withdraw",
+      [tokenAddress, withdrawAmount, proofArg, offchainZKP],
+    );
   }
 
   /**
