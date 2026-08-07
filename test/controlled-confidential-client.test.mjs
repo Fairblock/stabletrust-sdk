@@ -61,3 +61,28 @@ test("public applyPending forwards to the existing implementation", async () => 
   assert.equal(await client.applyPending(wallet, options), receipt);
   assert.deepEqual(seen, [wallet, options]);
 });
+
+test("controlled submissions add 25 percent gas headroom by default", async () => {
+  const client = new ControlledConfidentialTransferClient(
+    RPC,
+    DIAMOND,
+    CHAIN_ID,
+    { autoApplyPending: false },
+  );
+
+  let seenGasLimit;
+  const method = async (...args) => {
+    const overrides = args.at(-1);
+    seenGasLimit = overrides.gasLimit;
+    return { hash: "0xabc" };
+  };
+  method.estimateGas = async () => 162309n;
+
+  const tx = await client._submitWithGasSafety(
+    { applyPending: method },
+    "applyPending",
+  );
+
+  assert.equal(tx.hash, "0xabc");
+  assert.equal(seenGasLimit, 202887n);
+});
