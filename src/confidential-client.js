@@ -46,6 +46,7 @@ export class ConfidentialTransferClient {
    * @param {string} [options.ipfsUploadUrl] - StableTrust IPFS upload endpoint for off-chain proof uploads
    * @param {string} [options.ipfsApiKey] - Optional bearer token for the StableTrust IPFS upload endpoint
    * @param {string} [options.apiBaseUrl] - StableTrust backend API base URL for request persistence
+   * @param {string} [options.applicationName] - App name stored on request rows (default: "SDK")
    */
   constructor(rpcUrl, contractAddressOrChainId, chainId, options = {}) {
     // Validate required config
@@ -94,6 +95,7 @@ export class ConfidentialTransferClient {
       ipfsUploadUrl: ipfsOptions.ipfsUploadUrl || null,
       ipfsApiKey: ipfsOptions.ipfsApiKey || null,
       apiBaseUrl: ipfsOptions.apiBaseUrl || null,
+      applicationName: ipfsOptions.applicationName || "SDK",
     };
 
     // WASM will be auto-initialized on first use
@@ -126,7 +128,7 @@ export class ConfidentialTransferClient {
     const payload = {
       chainKey: CHAIN_KEY_BY_ID[this.config.chainId] || String(this.config.chainId),
       chainId: this.config.chainId,
-      applicationName: "SDK",
+      applicationName: this.config.applicationName,
       ...data,
     };
     createRequest(payload, apiBaseUrl).catch((err) => {
@@ -897,7 +899,12 @@ export class ConfidentialTransferClient {
             senderEnc.queuedEncrypted && receiverEnc.queuedEncrypted
               ? {
                   queuedEncryptedSenderRandomness: senderEnc.queuedEncrypted,
-                  queuedEncryptedReceiverRandomness: receiverEnc.queuedEncrypted,
+                  queuedEncryptedSenderRandomnessId:
+                    senderEnc.queuedEncryptedId,
+                  queuedEncryptedReceiverRandomness:
+                    receiverEnc.queuedEncrypted,
+                  queuedEncryptedReceiverRandomnessId:
+                    receiverEnc.queuedEncryptedId,
                 }
               : {};
 
@@ -910,7 +917,9 @@ export class ConfidentialTransferClient {
             status: "pending",
             details: transferDetails,
             encryptedSenderRandomness: senderEnc.encrypted,
+            encryptedSenderRandomnessId: senderEnc.encryptedId,
             encryptedReceiverRandomness: receiverEnc.encrypted,
+            encryptedReceiverRandomnessId: receiverEnc.encryptedId,
             ...queuedFields,
           });
 
@@ -923,10 +932,13 @@ export class ConfidentialTransferClient {
             status: "pending",
             details: transferDetails,
             encryptedReceiverRandomness: receiverEnc.encrypted,
+            encryptedReceiverRandomnessId: receiverEnc.encryptedId,
             ...(receiverEnc.queuedEncrypted
               ? {
                   queuedEncryptedReceiverRandomness:
                     receiverEnc.queuedEncrypted,
+                  queuedEncryptedReceiverRandomnessId:
+                    receiverEnc.queuedEncryptedId,
                 }
               : {}),
           });

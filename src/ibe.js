@@ -10,6 +10,16 @@ function extractPublicKey(pubkeyObj) {
   return pubkeyObj?.public_key || pubkeyObj?.pubkey || null;
 }
 
+/**
+ * Build IBE identity: address (lowercase) + chain public key.
+ * @param {string} userAddress
+ * @param {string} publicKey
+ * @returns {string}
+ */
+function buildIbeId(userAddress, publicKey) {
+  return userAddress.toLowerCase() + publicKey;
+}
+
 async function getIbePublicKeys() {
   if (cachedIbePublicKeys) return cachedIbePublicKeys;
 
@@ -40,20 +50,37 @@ async function getIbePublicKeys() {
  * Always encrypts under the active pubkey; also encrypts under the queued
  * pubkey when the chain reports one (backup for key rotation).
  *
- * @param {string} userAddress - Wallet address used as the IBE identity
+ * Identity is address.toLowerCase() + chain pk (active or queued).
+ *
+ * @param {string} userAddress - Wallet address used as part of the IBE identity
  * @param {string} randomnessBase64 - Base64-encoded randomness
- * @returns {Promise<{ encrypted: string, queuedEncrypted: string | null }>}
- *   Hex-encoded IBE ciphertexts
+ * @returns {Promise<{
+ *   encrypted: string,
+ *   encryptedId: string,
+ *   queuedEncrypted: string | null,
+ *   queuedEncryptedId: string | null
+ * }>}
+ *   Hex-encoded IBE ciphertexts plus the identities used for each
  */
 export async function encryptRandomness(userAddress, randomnessBase64) {
   const { active, queued } = await getIbePublicKeys();
-  const id = userAddress.toLowerCase();
   const randomnessBuffer = Buffer.from(randomnessBase64, "base64");
 
-  const [encrypted, queuedEncrypted] = await Promise.all([
-    timelockEncrypt(id, active, randomnessBuffer),
-    queued ? timelockEncrypt(id, queued, randomnessBuffer) : Promise.resolve(null),
-  ]);
+  // Active ciphertext → identity address.toLowerCase() + activePk
+  const encryptedId = buildIbeId(userAddress, active);
+  const encrypted = await timelockEncrypt(encryptedId, active, randomnessBuffer);
 
-  return { encrypted, queuedEncrypted };
+  // Queued ciphertext → identity address.toLowerCase() + queuedPk
+  let queuedEncrypted = null;
+  let queuedEncryptedId = null;
+  if (queued) {
+    queuedEncryptedId = buildIbeId(userAddress, queued);
+    queuedEncrypted = await timelockEncrypt(
+      queuedEncryptedId,
+      queued,
+      randomnessBuffer,
+    );
+  }
+
+  return { encrypted, encryptedId, queuedEncrypted, queuedEncryptedId };
 }

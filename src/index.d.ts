@@ -554,6 +554,8 @@ declare module "@fairblock/stabletrust" {
     ipfsApiKey?: string;
     /** StableTrust backend API base URL for persisting request rows. Defaults to the production API. */
     apiBaseUrl?: string;
+    /** App name stored on request rows. Defaults to "SDK". */
+    applicationName?: string;
   }
 
   /**
