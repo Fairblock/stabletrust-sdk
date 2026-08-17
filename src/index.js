@@ -1,6 +1,9 @@
-export { ConfidentialTransferClient } from "./confidential-client.js";
-export { ControlledConfidentialTransferClient } from "./controlled-confidential-client.js";
-export { AnonymousTransferClient } from "./anonymous-client.js";
+export {
+  ConfidentialTransferClient,
+  ControlledConfidentialTransferClient,
+  AnonymousTransferClient,
+  WITHDRAW_FEE_PPM_DENOMINATOR,
+} from "./fee-aware-clients.js";
 export { deriveKeys, decryptCiphertext, combineCiphertext } from "./crypto.js";
 export {
   encodeTransferProof,
@@ -14,9 +17,13 @@ export {
   TRANSFER_CONFIDENTIAL_SIGNATURE,
   WITHDRAW_CONFIDENTIAL_SIGNATURE,
   FEE_TOKEN_SIGNATURE,
+  FEE_ACCOUNT_SIGNATURE,
   NON_ANONYMOUS_TRANSFER_FEE_SIGNATURE,
+  NON_ANONYMOUS_WITHDRAW_FEE_SIGNATURE,
+  NON_ANONYMOUS_WITHDRAW_FEE_PPM_SIGNATURE,
   ANONYMOUS_IPFS_TRANSFER_FEE_SIGNATURE,
   ANONYMOUS_INLINE_TRANSFER_FEE_SIGNATURE,
+  ANONYMOUS_WITHDRAW_FEE_PPM_SIGNATURE,
   STABLETRUST_CONTRACTS_BY_CHAIN_ID,
   getStabletrustContractAddress,
 } from "./constants.js";
