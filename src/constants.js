@@ -29,15 +29,19 @@ export const CONTRACT_ABI = [
   `function ${NON_ANONYMOUS_TRANSFER_FEE_SIGNATURE} external view returns (uint256)`,
   `function ${ANONYMOUS_IPFS_TRANSFER_FEE_SIGNATURE} external view returns (uint256)`,
   `function ${ANONYMOUS_INLINE_TRANSFER_FEE_SIGNATURE} external view returns (uint256)`,
-  // Events used to extract request/tx IDs from receipts for backend persistence
-  "event DepositRequested(address indexed ownerAddr, uint256 indexed txId, address indexed token, uint256 plainAmount, bytes availableShare, bytes pendingShare)",
-  "event DepositProcessed(address indexed ownerAddr, uint256 indexed txId, bool ok, string errorMsg, address token, bytes newAvailC1, bytes newAvailC2, uint64 pendingCreditCounter, uint64 minimumPendingCreditCounter, bytes availableShare, bytes pendingShare)",
-  "event TransferRequested(address indexed sender, address indexed recipient, uint256 indexed txId, address token, bytes proof, uint256 feePaid, bool useOffchainVerify, bytes senderPubkey, bytes recipientPubkey, bytes senderCurrC1, bytes senderCurrC2)",
-  "event TransferProcessed(address indexed sender, address indexed recipient, uint256 indexed txId, bool ok, string errorMsg, address token, bytes senderNewAvailC1, bytes senderNewAvailC2, bytes recipientNewPendingC1, bytes recipientNewPendingC2, uint64 senderPendingCreditCounter, bytes senderAvailableShare, uint64 recipientPendingCreditCounter, uint64 recipientMinimumPendingCreditCounter, bytes recipientPendingShare)",
+
+  // Current ConfidentialMirror Diamond events. ResultCode is a Solidity enum
+  // and therefore appears as uint8 in the ABI.
+  "event CreateAccountRequested(address indexed ownerAddr, uint256 indexed txId, bytes elgamalPubkey)",
+  "event CreateAccountProcessed(address indexed ownerAddr, uint256 indexed txId, bool ok, uint8 code, bytes elgamalPubkey)",
+  "event DepositRequested(address indexed ownerAddr, uint256 indexed txId, address indexed token, uint256 plainAmount, bytes availableC1, bytes availableC2)",
+  "event DepositProcessed(address indexed ownerAddr, uint256 indexed txId, bool ok, uint8 code, address token, bytes newAvailC1, bytes newAvailC2, uint64 pendingCreditCounter)",
+  "event TransferRequested(address indexed sender, address indexed recipient, uint256 indexed txId, address token, bytes proof, bytes senderPubkey, bytes recipientPubkey, bytes senderCurrC1, bytes senderCurrC2, bool offchainZKP)",
+  "event TransferProcessed(address indexed sender, address indexed recipient, uint256 indexed txId, bool ok, uint8 code, address token, bytes senderNewAvailC1, bytes senderNewAvailC2, bytes recipientNewPendingC1, bytes recipientNewPendingC2, uint64 senderPendingCreditCounter, uint64 recipientPendingCreditCounter)",
   "event ApplyPendingRequested(address indexed ownerAddr, uint256 indexed txId)",
-  "event ApplyPendingProcessed(address indexed ownerAddr, uint256 indexed txId, bool ok, string errorMsg, address[] tokens, bytes[] newAvailC1, bytes[] newAvailC2, uint64 pendingCreditCounter, uint64 minimumPendingCreditCounter, bytes availableShare)",
-  "event WithdrawRequested(address indexed ownerAddr, uint256 indexed txId, address token, uint256 plainAmount, bytes proof, bool useOffchainVerify, bytes userPubkey, bytes userCurrC1, bytes userCurrC2)",
-  "event WithdrawProcessed(address indexed ownerAddr, uint256 indexed txId, bool ok, string errorMsg, address token, uint256 plainAmount, bytes newAvailC1, bytes newAvailC2, uint64 pendingCreditCounter, uint64 minimumPendingCreditCounter, bytes availableShare)",
+  "event ApplyPendingProcessed(address indexed ownerAddr, uint256 indexed txId, bool ok, uint8 code, address[] tokens, bytes[] newAvailC1, bytes[] newAvailC2, uint64 pendingCreditCounter)",
+  "event WithdrawRequested(address indexed ownerAddr, uint256 indexed txId, address token, uint256 plainAmount, bytes proof, bytes userPubkey, bytes userCurrC1, bytes userCurrC2, bool offchainZKP)",
+  "event WithdrawProcessed(address indexed ownerAddr, uint256 indexed txId, bool ok, uint8 code, address token, uint256 plainAmount, bytes newAvailC1, bytes newAvailC2, uint64 pendingCreditCounter)",
 ];
 
 export const ERC20_ABI = [
