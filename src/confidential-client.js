@@ -871,11 +871,9 @@ export class ConfidentialTransferClient {
         throw new Error("Transfer transaction failed");
       }
 
-      if (waitForFinalization) {
-        await this._waitForGlobalState(senderAddress, "transfer");
-      }
-
-      // IBE-encrypt randomness then persist both records (fire-and-forget, after finalization)
+      // IBE-encrypt randomness and start persisting both records immediately after
+      // the EVM request transaction is mined. This is intentionally independent of
+      // waitForFinalization so the backend record can exist while the action is pending.
       const txHash = receipt.hash;
       const requestId = await this._resolveRequestId(receipt, senderAddress, [
         "TransferRequested",
@@ -944,6 +942,10 @@ export class ConfidentialTransferClient {
           });
         })
         .catch(() => {});
+
+      if (waitForFinalization) {
+        await this._waitForGlobalState(senderAddress, "transfer");
+      }
 
       return receipt;
     } catch (error) {
