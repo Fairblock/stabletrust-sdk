@@ -12,9 +12,13 @@ const APPLY_PENDING_SIGNATURE = "applyPending()";
 export const TRANSFER_CONFIDENTIAL_SIGNATURE = "transferConfidential(address,address,bytes,bool)";
 export const WITHDRAW_CONFIDENTIAL_SIGNATURE = "withdraw(address,uint256,bytes,bool)";
 export const FEE_TOKEN_SIGNATURE = "feeToken()";
+export const FEE_ACCOUNT_SIGNATURE = "feeAccount()";
 export const NON_ANONYMOUS_TRANSFER_FEE_SIGNATURE = "nonAnonymousTransferFee()";
+export const NON_ANONYMOUS_WITHDRAW_FEE_SIGNATURE = "nonAnonymousWithdrawFee()";
+export const NON_ANONYMOUS_WITHDRAW_FEE_PPM_SIGNATURE = "nonAnonymousWithdrawFeePpm()";
 export const ANONYMOUS_IPFS_TRANSFER_FEE_SIGNATURE = "anonymousIpfsTransferFee()";
 export const ANONYMOUS_INLINE_TRANSFER_FEE_SIGNATURE = "anonymousInlineTransferFee()";
+export const ANONYMOUS_WITHDRAW_FEE_PPM_SIGNATURE = "anonymousWithdrawFeePpm()";
 
 export const CONTRACT_ABI = [
   `function ${CREATE_CONFIDENTIAL_ACCOUNT_SIGNATURE} external`,
@@ -23,12 +27,16 @@ export const CONTRACT_ABI = [
   `function ${GET_AVAILABLE_SIGNATURE} external view returns (bytes c1, bytes c2)`,
   `function ${GET_PENDING_SIGNATURE} external view returns (bytes c1, bytes c2)`,
   `function ${TRANSFER_CONFIDENTIAL_SIGNATURE} external payable`,
-  `function ${WITHDRAW_CONFIDENTIAL_SIGNATURE} external`,
+  `function ${WITHDRAW_CONFIDENTIAL_SIGNATURE} external payable`,
   `function ${APPLY_PENDING_SIGNATURE} external`,
   `function ${FEE_TOKEN_SIGNATURE} external view returns (address)`,
+  `function ${FEE_ACCOUNT_SIGNATURE} external view returns (address)`,
   `function ${NON_ANONYMOUS_TRANSFER_FEE_SIGNATURE} external view returns (uint256)`,
+  `function ${NON_ANONYMOUS_WITHDRAW_FEE_SIGNATURE} external view returns (uint256)`,
+  `function ${NON_ANONYMOUS_WITHDRAW_FEE_PPM_SIGNATURE} external view returns (uint256)`,
   `function ${ANONYMOUS_IPFS_TRANSFER_FEE_SIGNATURE} external view returns (uint256)`,
   `function ${ANONYMOUS_INLINE_TRANSFER_FEE_SIGNATURE} external view returns (uint256)`,
+  `function ${ANONYMOUS_WITHDRAW_FEE_PPM_SIGNATURE} external view returns (uint256)`,
 
   // Current ConfidentialMirror Diamond events. ResultCode is a Solidity enum
   // and therefore appears as uint8 in the ABI.

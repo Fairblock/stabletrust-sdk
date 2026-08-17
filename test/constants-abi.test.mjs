@@ -8,9 +8,13 @@ import {
   TRANSFER_CONFIDENTIAL_SIGNATURE,
   WITHDRAW_CONFIDENTIAL_SIGNATURE,
   FEE_TOKEN_SIGNATURE,
+  FEE_ACCOUNT_SIGNATURE,
   NON_ANONYMOUS_TRANSFER_FEE_SIGNATURE,
+  NON_ANONYMOUS_WITHDRAW_FEE_SIGNATURE,
+  NON_ANONYMOUS_WITHDRAW_FEE_PPM_SIGNATURE,
   ANONYMOUS_IPFS_TRANSFER_FEE_SIGNATURE,
   ANONYMOUS_INLINE_TRANSFER_FEE_SIGNATURE,
+  ANONYMOUS_WITHDRAW_FEE_PPM_SIGNATURE,
   STABLETRUST_CONTRACTS_BY_CHAIN_ID,
   getStabletrustContractAddress,
 } from "../src/constants.js";
@@ -26,6 +30,10 @@ describe("contract ABI signatures", () => {
   it("CONTRACT_ABI contains both 4-arg signatures", () => {
     assert.ok(iface.getFunction(TRANSFER_CONFIDENTIAL_SIGNATURE), "transferConfidential 4-arg missing");
     assert.ok(iface.getFunction(WITHDRAW_CONFIDENTIAL_SIGNATURE), "withdraw 4-arg missing");
+  });
+
+  it("withdraw is payable so native fixed request fees can be attached", () => {
+    assert.equal(iface.getFunction(WITHDRAW_CONFIDENTIAL_SIGNATURE).stateMutability, "payable");
   });
 
   it("CONTRACT_ABI no longer contains the old 3-arg signatures", () => {
@@ -76,7 +84,7 @@ describe("CONTRACT_ABI / ERC20_ABI composition", () => {
   const iface = new ethers.Interface(CONTRACT_ABI);
   const fns = iface.fragments.filter((f) => f.type === "function").map((f) => f.format("sighash"));
 
-  it("exposes exactly the expected 12 functions", () => {
+  it("exposes exactly the expected 16 functions", () => {
     assert.deepEqual(
       [...fns].sort(),
       [
@@ -89,9 +97,13 @@ describe("CONTRACT_ABI / ERC20_ABI composition", () => {
         WITHDRAW_CONFIDENTIAL_SIGNATURE,
         "applyPending()",
         FEE_TOKEN_SIGNATURE,
+        FEE_ACCOUNT_SIGNATURE,
         NON_ANONYMOUS_TRANSFER_FEE_SIGNATURE,
+        NON_ANONYMOUS_WITHDRAW_FEE_SIGNATURE,
+        NON_ANONYMOUS_WITHDRAW_FEE_PPM_SIGNATURE,
         ANONYMOUS_IPFS_TRANSFER_FEE_SIGNATURE,
         ANONYMOUS_INLINE_TRANSFER_FEE_SIGNATURE,
+        ANONYMOUS_WITHDRAW_FEE_PPM_SIGNATURE,
       ].sort(),
     );
   });
