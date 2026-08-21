@@ -35,6 +35,14 @@ declare module "@fairblock/stabletrust" {
     authNonce: bigint;
   }
 
+  export interface ConfidentialAccountInfo {
+    exists: boolean;
+    finalized: boolean;
+    txId: bigint;
+    pubkey?: string;
+    [key: string]: unknown;
+  }
+
   export interface FairycloakResponse {
     request_id: string;
     tx_hash?: string;
@@ -260,6 +268,21 @@ declare module "@fairblock/stabletrust" {
       accountId: string,
     ): Promise<Keys>;
 
+    /**
+     * Create an anonymous account when it does not exist and wait for readiness.
+     */
+    ensureAnonymousAccount(
+      authWallet: ethers.Wallet | ethers.Signer,
+      accountId: string,
+      elgamalPublicKey: string,
+      options?: {
+        deadlineOffset?: number;
+        waitUntilReady?: boolean;
+        timeoutMs?: number;
+        pollIntervalMs?: number;
+      },
+    ): Promise<{ accountId: string; accountInfo: AnonymousAccountInfo; created: boolean }>;
+
     // ── proof generation ────────────────────────────────────────────
 
     /**
@@ -317,7 +340,7 @@ declare module "@fairblock/stabletrust" {
      * @param amount Amount in raw units of the active fee token (wei for native currency)
      */
     depositFees(
-      authWallet: ethers.Wallet,
+      authWallet: ethers.Wallet | ethers.Signer,
       accountId: string,
       amount: bigint | string | number,
       options?: DepositFeesOptions,
@@ -376,7 +399,7 @@ declare module "@fairblock/stabletrust" {
      * Handles ERC-20 approval automatically.
      */
     deposit(
-      authWallet: ethers.Wallet,
+      authWallet: ethers.Wallet | ethers.Signer,
       accountId: string,
       tokenAddress: string,
       amount: bigint | string | number,
@@ -581,7 +604,7 @@ declare module "@fairblock/stabletrust" {
     /**
      * Get account information from the contract
      */
-    getAccountInfo(address: string): Promise<any>;
+    getAccountInfo(address: string): Promise<ConfidentialAccountInfo>;
 
     /**
      * Create a confidential account if it doesn't exist and wait for finalization
@@ -702,12 +725,12 @@ declare module "@fairblock/stabletrust" {
   /**
    * Encode a transfer proof for contract submission
    */
-  export function encodeTransferProof(proof: any): string;
+  export function encodeTransferProof(proof: unknown): string;
 
   /**
    * Encode a withdraw proof for contract submission
    */
-  export function encodeWithdrawProof(proof: any): string;
+  export function encodeWithdrawProof(proof: unknown): string;
 
   /**
    * Maximum allowed length for an anonymous account ID (20 characters).
@@ -743,12 +766,12 @@ declare module "@fairblock/stabletrust" {
   export const NON_ANONYMOUS_TRANSFER_FEE_SIGNATURE: string;
   export const ANONYMOUS_IPFS_TRANSFER_FEE_SIGNATURE: string;
   export const ANONYMOUS_INLINE_TRANSFER_FEE_SIGNATURE: string;
-  export const CONTRACT_ABI: any[];
+  export const CONTRACT_ABI: unknown[];
 
   /**
    * ERC20 ABI
    */
-  export const ERC20_ABI: any[];
+  export const ERC20_ABI: unknown[];
 
   /**
    * Stabletrust contract addresses by chain id
