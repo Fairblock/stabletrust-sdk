@@ -69,6 +69,7 @@ export const STABLETRUST_CONTRACTS_BY_CHAIN_ID = Object.freeze({
   11155111: "0x7507a13352AFAa79D33E994f86f2f62463ba8DE4", //Ethereum
   421614: "0x5acECCdeb5CbD3C727eCB49F8706Eb80EF2f977F", //Arbitrum
   42431: "0xE559fB936C69c46E216bf61B07C16bF1a6d444aa", //Tempo
+  42161: "0xCAA6384D5Ac8b9111D482dd676BB890f2b6e9513", //Arbitrum One (mainnet)
 });
 
 export function getStabletrustContractAddress(chainId) {

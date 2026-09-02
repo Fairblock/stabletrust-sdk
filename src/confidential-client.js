@@ -9,6 +9,7 @@ import {
   ANONYMOUS_IPFS_TRANSFER_FEE_SIGNATURE,
   ANONYMOUS_INLINE_TRANSFER_FEE_SIGNATURE,
   getStabletrustContractAddress,
+  STABLETRUST_CONTRACTS_BY_CHAIN_ID,
 } from "./constants.js";
 import { deriveKeys, decryptCiphertext, combineCiphertext } from "./crypto.js";
 import {
@@ -76,9 +77,9 @@ export class ConfidentialTransferClient {
       throw new Error("chainId is required");
     }
     if (!resolvedContractAddress) {
-      const supportedChainIds = [2201, 5042002, 84532, 11155111, 421614, 42431]
-        .map(String)
-        .join(", ");
+      const supportedChainIds = Object.keys(
+        STABLETRUST_CONTRACTS_BY_CHAIN_ID,
+      ).join(", ");
       throw new Error(
         `contractAddress is required for chainId ${resolvedChainId}. No default Stabletrust contract is configured for this chain. Supported chainIds: ${supportedChainIds}`,
       );
