@@ -65,10 +65,10 @@ describe("getStabletrustContractAddress + chain map", () => {
     assert.equal(getStabletrustContractAddress(undefined), null);
   });
 
-  it("covers the six supported chains", () => {
+  it("covers the seven supported chains", () => {
     assert.deepEqual(
       Object.keys(STABLETRUST_CONTRACTS_BY_CHAIN_ID).map(Number).sort((a, b) => a - b),
-      [2201, 5042002, 42431, 84532, 421614, 11155111].sort((a, b) => a - b),
+      [2201, 5042002, 42431, 84532, 42161, 421614, 11155111].sort((a, b) => a - b),
     );
   });
 
