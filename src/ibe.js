@@ -3,6 +3,14 @@ import { timelockEncrypt } from "./vendor/ts-ibe/index.js";
 const IBE_PUBKEY_URL =
   "https://anon-testnet-api.fairblock.network/fairyring/keyshare/pubkey";
 
+// Bound the IBE public-key fetch. Without this, a slow or hung endpoint (a
+// socket that accepts the connection but never responds) would block the fetch
+// indefinitely, and because confidentialTransfer awaits encryptRandomness that
+// stall propagates to the caller's transfer() call even though the on-chain
+// transfer already happened. On timeout the fetch aborts and encryptRandomness
+// rejects, which the caller handles as "dashboard record skipped".
+const IBE_FETCH_TIMEOUT_MS = 5000;
+
 /** @type {{ active: string, queued: string | null } | null} */
 let cachedIbePublicKeys = null;
 
@@ -23,9 +31,22 @@ function buildIbeId(userAddress, publicKey) {
 async function getIbePublicKeys() {
   if (cachedIbePublicKeys) return cachedIbePublicKeys;
 
-  const response = await fetch(IBE_PUBKEY_URL, {
-    headers: { Accept: "application/json" },
-  });
+  let response;
+  try {
+    response = await fetch(IBE_PUBKEY_URL, {
+      headers: { Accept: "application/json" },
+      signal: AbortSignal.timeout(IBE_FETCH_TIMEOUT_MS),
+    });
+  } catch (err) {
+    if (err?.name === "TimeoutError" || err?.name === "AbortError") {
+      throw new Error(
+        `IBE public key fetch timed out after ${IBE_FETCH_TIMEOUT_MS}ms`,
+      );
+    }
+    throw new Error(
+      `IBE public key fetch failed: ${err?.message ?? err}`,
+    );
+  }
 
   if (!response.ok) {
     throw new Error(

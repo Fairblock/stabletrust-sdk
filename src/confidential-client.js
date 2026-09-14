@@ -121,7 +121,10 @@ export class ConfidentialTransferClient {
   }
 
   /**
-   * Fire-and-forget request row creation
+   * Post a request row. Returns the createRequest promise (which resolves even
+   * on failure - errors are logged and swallowed) so callers that need the row
+   * to exist before returning (e.g. confidentialTransfer) can `await` it.
+   * Callers that don't await keep the old fire-and-forget behavior.
    * @private
    */
   _postRequest(data) {
@@ -132,7 +135,7 @@ export class ConfidentialTransferClient {
       applicationName: this.config.applicationName,
       ...data,
     };
-    createRequest(payload, apiBaseUrl).catch((err) => {
+    return createRequest(payload, apiBaseUrl).catch((err) => {
       const status = err?.response?.status;
       const body = err?.response?.data;
       console.warn("[StableTrust] Failed to post request:", err.message);
@@ -882,67 +885,72 @@ export class ConfidentialTransferClient {
       ]);
       const tokenSymbol = await tokenContract.symbol();
 
-      Promise.all([
-        encryptRandomness(senderAddress, proof.data.sender_randomness),
-        encryptRandomness(recipientAddress, proof.data.receiver_randomness),
-      ])
-        .then(([senderEnc, receiverEnc]) => {
-          const transferDetails = {
-            sender: senderAddress.toLowerCase(),
-            recipient: recipientAddress.toLowerCase(),
-            token: tokenSymbol,
-            tokenAddress,
-          };
+      let senderEnc = null;
+      let receiverEnc = null;
+      try {
+        [senderEnc, receiverEnc] = await Promise.all([
+          encryptRandomness(senderAddress, proof.data.sender_randomness),
+          encryptRandomness(recipientAddress, proof.data.receiver_randomness),
+        ]);
+      } catch (encErr) {
+        console.warn(
+          `[StableTrust] Transfer ${txHash} Failed to get IBE Randomness (${encErr?.message ?? encErr}). `,
+        );
+      }
 
-          const queuedFields =
-            senderEnc.queuedEncrypted && receiverEnc.queuedEncrypted
-              ? {
-                  queuedEncryptedSenderRandomness: senderEnc.queuedEncrypted,
-                  queuedEncryptedSenderRandomnessId:
-                    senderEnc.queuedEncryptedId,
-                  queuedEncryptedReceiverRandomness:
-                    receiverEnc.queuedEncrypted,
-                  queuedEncryptedReceiverRandomnessId:
-                    receiverEnc.queuedEncryptedId,
-                }
-              : {};
+      if (senderEnc && receiverEnc) {
+        const transferDetails = {
+          sender: senderAddress.toLowerCase(),
+          recipient: recipientAddress.toLowerCase(),
+          token: tokenSymbol,
+          tokenAddress,
+        };
 
-          this._postRequest({
-            requestId,
-            userAddress: senderAddress.toLowerCase(),
-            operationKind: 2,
-            type: "transfer",
-            transactionHash: txHash,
-            status: "pending",
-            details: transferDetails,
-            encryptedSenderRandomness: senderEnc.encrypted,
-            encryptedSenderRandomnessId: senderEnc.encryptedId,
-            encryptedReceiverRandomness: receiverEnc.encrypted,
-            encryptedReceiverRandomnessId: receiverEnc.encryptedId,
-            ...queuedFields,
-          });
+        const queuedFields =
+          senderEnc.queuedEncrypted && receiverEnc.queuedEncrypted
+            ? {
+                queuedEncryptedSenderRandomness: senderEnc.queuedEncrypted,
+                queuedEncryptedSenderRandomnessId: senderEnc.queuedEncryptedId,
+                queuedEncryptedReceiverRandomness: receiverEnc.queuedEncrypted,
+                queuedEncryptedReceiverRandomnessId:
+                  receiverEnc.queuedEncryptedId,
+              }
+            : {};
 
-          this._postRequest({
-            requestId: `received-${requestId}-${recipientAddress.toLowerCase()}`,
-            userAddress: recipientAddress.toLowerCase(),
-            operationKind: 2,
-            type: "received",
-            transactionHash: txHash,
-            status: "pending",
-            details: transferDetails,
-            encryptedReceiverRandomness: receiverEnc.encrypted,
-            encryptedReceiverRandomnessId: receiverEnc.encryptedId,
-            ...(receiverEnc.queuedEncrypted
-              ? {
-                  queuedEncryptedReceiverRandomness:
-                    receiverEnc.queuedEncrypted,
-                  queuedEncryptedReceiverRandomnessId:
-                    receiverEnc.queuedEncryptedId,
-                }
-              : {}),
-          });
-        })
-        .catch(() => {});
+        await this._postRequest({
+          requestId,
+          userAddress: senderAddress.toLowerCase(),
+          operationKind: 2,
+          type: "transfer",
+          transactionHash: txHash,
+          status: "pending",
+          details: transferDetails,
+          encryptedSenderRandomness: senderEnc.encrypted,
+          encryptedSenderRandomnessId: senderEnc.encryptedId,
+          encryptedReceiverRandomness: receiverEnc.encrypted,
+          encryptedReceiverRandomnessId: receiverEnc.encryptedId,
+          ...queuedFields,
+        });
+
+        await this._postRequest({
+          requestId: `received-${requestId}-${recipientAddress.toLowerCase()}`,
+          userAddress: recipientAddress.toLowerCase(),
+          operationKind: 2,
+          type: "received",
+          transactionHash: txHash,
+          status: "pending",
+          details: transferDetails,
+          encryptedReceiverRandomness: receiverEnc.encrypted,
+          encryptedReceiverRandomnessId: receiverEnc.encryptedId,
+          ...(receiverEnc.queuedEncrypted
+            ? {
+                queuedEncryptedReceiverRandomness: receiverEnc.queuedEncrypted,
+                queuedEncryptedReceiverRandomnessId:
+                  receiverEnc.queuedEncryptedId,
+              }
+            : {}),
+        });
+      }
 
       if (waitForFinalization) {
         await this._waitForGlobalState(senderAddress, "transfer");
