@@ -5,7 +5,11 @@ import { ethers } from "ethers";
 import {
   CONTRACT_ABI,
   ERC20_ABI,
+  PREDICATE_ATTESTATION_SIGNATURE,
+  CREATE_CONFIDENTIAL_ACCOUNT_SIGNATURE,
+  DEPOSIT_SIGNATURE,
   TRANSFER_CONFIDENTIAL_SIGNATURE,
+  APPLY_PENDING_SIGNATURE,
   WITHDRAW_CONFIDENTIAL_SIGNATURE,
   FEE_TOKEN_SIGNATURE,
   FEE_ACCOUNT_SIGNATURE,
@@ -22,29 +26,62 @@ import {
 describe("contract ABI signatures", () => {
   const iface = new ethers.Interface(CONTRACT_ABI);
 
-  it("declares the 4-arg (bytes,bool) transfer + withdraw signatures", () => {
-    assert.equal(TRANSFER_CONFIDENTIAL_SIGNATURE, "transferConfidential(address,address,bytes,bool)");
-    assert.equal(WITHDRAW_CONFIDENTIAL_SIGNATURE, "withdraw(address,uint256,bytes,bool)");
+  it("declares the upgraded Attestation-bearing non-anonymous signatures", () => {
+    assert.equal(PREDICATE_ATTESTATION_SIGNATURE, "(string,uint256,address,bytes)");
+    assert.equal(
+      CREATE_CONFIDENTIAL_ACCOUNT_SIGNATURE,
+      "createConfidentialAccount(bytes,(string,uint256,address,bytes))",
+    );
+    assert.equal(
+      DEPOSIT_SIGNATURE,
+      "deposit(address,uint256,(string,uint256,address,bytes))",
+    );
+    assert.equal(
+      TRANSFER_CONFIDENTIAL_SIGNATURE,
+      "transferConfidential(address,address,bytes,bool,(string,uint256,address,bytes))",
+    );
+    assert.equal(
+      APPLY_PENDING_SIGNATURE,
+      "applyPending((string,uint256,address,bytes))",
+    );
+    assert.equal(
+      WITHDRAW_CONFIDENTIAL_SIGNATURE,
+      "withdraw(address,uint256,bytes,bool,(string,uint256,address,bytes))",
+    );
   });
 
-  it("CONTRACT_ABI contains both 4-arg signatures", () => {
-    assert.ok(iface.getFunction(TRANSFER_CONFIDENTIAL_SIGNATURE), "transferConfidential 4-arg missing");
-    assert.ok(iface.getFunction(WITHDRAW_CONFIDENTIAL_SIGNATURE), "withdraw 4-arg missing");
+  it("CONTRACT_ABI contains all five upgraded entrypoints", () => {
+    for (const signature of [
+      CREATE_CONFIDENTIAL_ACCOUNT_SIGNATURE,
+      DEPOSIT_SIGNATURE,
+      TRANSFER_CONFIDENTIAL_SIGNATURE,
+      APPLY_PENDING_SIGNATURE,
+      WITHDRAW_CONFIDENTIAL_SIGNATURE,
+    ]) {
+      assert.ok(iface.getFunction(signature), `${signature} missing`);
+    }
   });
 
-  it("withdraw is payable so native fixed request fees can be attached", () => {
+  it("withdraw remains payable so native fixed request fees can be attached", () => {
     assert.equal(iface.getFunction(WITHDRAW_CONFIDENTIAL_SIGNATURE).stateMutability, "payable");
   });
 
-  it("CONTRACT_ABI no longer contains the old 3-arg signatures", () => {
-    assert.equal(iface.getFunction("transferConfidential(address,address,bytes)"), null);
-    assert.equal(iface.getFunction("withdraw(address,uint256,bytes)"), null);
+  it("CONTRACT_ABI no longer contains any of the five legacy selectors", () => {
+    for (const signature of [
+      "createConfidentialAccount(bytes)",
+      "deposit(address,uint256)",
+      "transferConfidential(address,address,bytes,bool)",
+      "applyPending()",
+      "withdraw(address,uint256,bytes,bool)",
+    ]) {
+      assert.equal(iface.getFunction(signature), null, `${signature} should be absent`);
+    }
   });
 
   it("ethers v6 getFunction returns null (not throws) for a missing signature", () => {
     const stale = new ethers.Interface([
-      "function transferConfidential(address,address,bytes) external payable",
-      "function withdraw(address,uint256,bytes) external",
+      "function transferConfidential(address,address,bytes,bool) external payable",
+      "function withdraw(address,uint256,bytes,bool) external payable",
     ]);
     let result;
     assert.doesNotThrow(() => {
@@ -58,6 +95,8 @@ describe("getStabletrustContractAddress + chain map", () => {
   it("resolves known chains (number or string chainId)", () => {
     assert.equal(getStabletrustContractAddress(84532), "0x4a251C9D79faCa20b193630A4ee313af7cBCDD93");
     assert.equal(getStabletrustContractAddress("84532"), "0x4a251C9D79faCa20b193630A4ee313af7cBCDD93");
+    assert.equal(getStabletrustContractAddress(421614), "0x147C6D8cA1a4784Ed76d98b0E3CcA41C38a49A5f");
+    assert.equal(getStabletrustContractAddress("421614"), "0x147C6D8cA1a4784Ed76d98b0E3CcA41C38a49A5f");
   });
 
   it("returns null for unknown / missing chainId", () => {
@@ -88,14 +127,14 @@ describe("CONTRACT_ABI / ERC20_ABI composition", () => {
     assert.deepEqual(
       [...fns].sort(),
       [
-        "createConfidentialAccount(bytes)",
-        "deposit(address,uint256)",
+        CREATE_CONFIDENTIAL_ACCOUNT_SIGNATURE,
+        DEPOSIT_SIGNATURE,
         "getAccountCore(address)",
         "getAvailable(address,address)",
         "getPending(address,address)",
         TRANSFER_CONFIDENTIAL_SIGNATURE,
         WITHDRAW_CONFIDENTIAL_SIGNATURE,
-        "applyPending()",
+        APPLY_PENDING_SIGNATURE,
         FEE_TOKEN_SIGNATURE,
         FEE_ACCOUNT_SIGNATURE,
         NON_ANONYMOUS_TRANSFER_FEE_SIGNATURE,

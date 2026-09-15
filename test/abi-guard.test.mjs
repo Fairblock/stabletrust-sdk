@@ -36,14 +36,17 @@ describe("_assertLatestContractAbi (stale-ABI fail-fast guard)", () => {
     assert.doesNotThrow(runGuard(CONTRACT_ABI));
   });
 
-  it("THROWS when transferConfidential is the old 3-arg form (missing bytes,bool)", () => {
+  it("THROWS when transferConfidential is the legacy form without Attestation", () => {
     const stale = CONTRACT_ABI.map((f) =>
       f.includes("transferConfidential")
-        ? "function transferConfidential(address,address,bytes) external payable"
+        ? "function transferConfidential(address,address,bytes,bool) external payable"
         : f,
     );
     assert.throws(runGuard(stale), /stale or incomplete/);
-    assert.throws(runGuard(stale), /transferConfidential\(address,address,bytes,bool\)/);
+    assert.throws(
+      runGuard(stale),
+      /transferConfidential\(address,address,bytes,bool,\(string,uint256,address,bytes\)\)/,
+    );
   });
 
   it("THROWS when a fee getter is missing (e.g. pre-fee single-feeAmount ABI)", () => {
@@ -76,8 +79,8 @@ describe("_assertLatestContractAbi (stale-ABI fail-fast guard)", () => {
   // try/catch would silently pass. The current guard must still throw.
   it("catches a stale ABI that ethers-v6 getFunction would have silently returned null for", () => {
     const stale = new ethers.Interface([
-      "function transferConfidential(address,address,bytes) external payable",
-      "function withdraw(address,uint256,bytes) external",
+      "function transferConfidential(address,address,bytes,bool) external payable",
+      "function withdraw(address,uint256,bytes,bool) external payable",
     ]);
     assert.equal(stale.getFunction(TRANSFER_CONFIDENTIAL_SIGNATURE), null); // does NOT throw
     const client = Object.create(ConfidentialTransferClient.prototype);
