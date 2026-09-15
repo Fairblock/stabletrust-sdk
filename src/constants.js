@@ -2,15 +2,22 @@
  * Contract ABIs and Constants
  */
 
-const CREATE_CONFIDENTIAL_ACCOUNT_SIGNATURE = "createConfidentialAccount(bytes)";
-const DEPOSIT_SIGNATURE = "deposit(address,uint256)";
+export const PREDICATE_ATTESTATION_SIGNATURE =
+  "(string,uint256,address,bytes)";
+export const CREATE_CONFIDENTIAL_ACCOUNT_SIGNATURE =
+  `createConfidentialAccount(bytes,${PREDICATE_ATTESTATION_SIGNATURE})`;
+export const DEPOSIT_SIGNATURE =
+  `deposit(address,uint256,${PREDICATE_ATTESTATION_SIGNATURE})`;
 const GET_ACCOUNT_CORE_SIGNATURE = "getAccountCore(address)";
 const GET_AVAILABLE_SIGNATURE = "getAvailable(address,address)";
 const GET_PENDING_SIGNATURE = "getPending(address,address)";
-const APPLY_PENDING_SIGNATURE = "applyPending()";
+export const APPLY_PENDING_SIGNATURE =
+  `applyPending(${PREDICATE_ATTESTATION_SIGNATURE})`;
 
-export const TRANSFER_CONFIDENTIAL_SIGNATURE = "transferConfidential(address,address,bytes,bool)";
-export const WITHDRAW_CONFIDENTIAL_SIGNATURE = "withdraw(address,uint256,bytes,bool)";
+export const TRANSFER_CONFIDENTIAL_SIGNATURE =
+  `transferConfidential(address,address,bytes,bool,${PREDICATE_ATTESTATION_SIGNATURE})`;
+export const WITHDRAW_CONFIDENTIAL_SIGNATURE =
+  `withdraw(address,uint256,bytes,bool,${PREDICATE_ATTESTATION_SIGNATURE})`;
 export const FEE_TOKEN_SIGNATURE = "feeToken()";
 export const FEE_ACCOUNT_SIGNATURE = "feeAccount()";
 export const NON_ANONYMOUS_TRANSFER_FEE_SIGNATURE = "nonAnonymousTransferFee()";
