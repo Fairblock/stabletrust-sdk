@@ -4,6 +4,9 @@
 
 export const PREDICATE_ATTESTATION_SIGNATURE =
   "(string,uint256,address,bytes)";
+const PREDICATE_ATTESTATION_ABI =
+  "(string uuid,uint256 expiration,address attester,bytes signature) attestation";
+
 export const CREATE_CONFIDENTIAL_ACCOUNT_SIGNATURE =
   `createConfidentialAccount(bytes,${PREDICATE_ATTESTATION_SIGNATURE})`;
 export const DEPOSIT_SIGNATURE =
@@ -28,14 +31,14 @@ export const ANONYMOUS_INLINE_TRANSFER_FEE_SIGNATURE = "anonymousInlineTransferF
 export const ANONYMOUS_WITHDRAW_FEE_PPM_SIGNATURE = "anonymousWithdrawFeePpm()";
 
 export const CONTRACT_ABI = [
-  `function ${CREATE_CONFIDENTIAL_ACCOUNT_SIGNATURE} external`,
-  `function ${DEPOSIT_SIGNATURE} external`,
+  `function createConfidentialAccount(bytes elgamalPubkey,${PREDICATE_ATTESTATION_ABI}) external`,
+  `function deposit(address token,uint256 plainAmount,${PREDICATE_ATTESTATION_ABI}) external`,
   `function ${GET_ACCOUNT_CORE_SIGNATURE} external view returns ((bool exists, bool finalized, bool pendingAction, uint256 txId, bytes elgamalPubkey, uint64 pendingCreditCounter))`,
   `function ${GET_AVAILABLE_SIGNATURE} external view returns (bytes c1, bytes c2)`,
   `function ${GET_PENDING_SIGNATURE} external view returns (bytes c1, bytes c2)`,
-  `function ${TRANSFER_CONFIDENTIAL_SIGNATURE} external payable`,
-  `function ${WITHDRAW_CONFIDENTIAL_SIGNATURE} external payable`,
-  `function ${APPLY_PENDING_SIGNATURE} external`,
+  `function transferConfidential(address recipient,address token,bytes proof,bool offchainZKP,${PREDICATE_ATTESTATION_ABI}) external payable`,
+  `function withdraw(address token,uint256 plainAmount,bytes proof,bool offchainZKP,${PREDICATE_ATTESTATION_ABI}) external payable`,
+  `function applyPending(${PREDICATE_ATTESTATION_ABI}) external`,
   `function ${FEE_TOKEN_SIGNATURE} external view returns (address)`,
   `function ${FEE_ACCOUNT_SIGNATURE} external view returns (address)`,
   `function ${NON_ANONYMOUS_TRANSFER_FEE_SIGNATURE} external view returns (uint256)`,
