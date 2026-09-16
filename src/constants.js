@@ -2,15 +2,25 @@
  * Contract ABIs and Constants
  */
 
-const CREATE_CONFIDENTIAL_ACCOUNT_SIGNATURE = "createConfidentialAccount(bytes)";
-const DEPOSIT_SIGNATURE = "deposit(address,uint256)";
+export const PREDICATE_ATTESTATION_SIGNATURE =
+  "(string,uint256,address,bytes)";
+const PREDICATE_ATTESTATION_ABI =
+  "(string uuid,uint256 expiration,address attester,bytes signature) attestation";
+
+export const CREATE_CONFIDENTIAL_ACCOUNT_SIGNATURE =
+  `createConfidentialAccount(bytes,${PREDICATE_ATTESTATION_SIGNATURE})`;
+export const DEPOSIT_SIGNATURE =
+  `deposit(address,uint256,${PREDICATE_ATTESTATION_SIGNATURE})`;
 const GET_ACCOUNT_CORE_SIGNATURE = "getAccountCore(address)";
 const GET_AVAILABLE_SIGNATURE = "getAvailable(address,address)";
 const GET_PENDING_SIGNATURE = "getPending(address,address)";
-const APPLY_PENDING_SIGNATURE = "applyPending()";
+export const APPLY_PENDING_SIGNATURE =
+  `applyPending(${PREDICATE_ATTESTATION_SIGNATURE})`;
 
-export const TRANSFER_CONFIDENTIAL_SIGNATURE = "transferConfidential(address,address,bytes,bool)";
-export const WITHDRAW_CONFIDENTIAL_SIGNATURE = "withdraw(address,uint256,bytes,bool)";
+export const TRANSFER_CONFIDENTIAL_SIGNATURE =
+  `transferConfidential(address,address,bytes,bool,${PREDICATE_ATTESTATION_SIGNATURE})`;
+export const WITHDRAW_CONFIDENTIAL_SIGNATURE =
+  `withdraw(address,uint256,bytes,bool,${PREDICATE_ATTESTATION_SIGNATURE})`;
 export const FEE_TOKEN_SIGNATURE = "feeToken()";
 export const FEE_ACCOUNT_SIGNATURE = "feeAccount()";
 export const NON_ANONYMOUS_TRANSFER_FEE_SIGNATURE = "nonAnonymousTransferFee()";
@@ -21,14 +31,14 @@ export const ANONYMOUS_INLINE_TRANSFER_FEE_SIGNATURE = "anonymousInlineTransferF
 export const ANONYMOUS_WITHDRAW_FEE_PPM_SIGNATURE = "anonymousWithdrawFeePpm()";
 
 export const CONTRACT_ABI = [
-  `function ${CREATE_CONFIDENTIAL_ACCOUNT_SIGNATURE} external`,
-  `function ${DEPOSIT_SIGNATURE} external`,
+  `function createConfidentialAccount(bytes elgamalPubkey,${PREDICATE_ATTESTATION_ABI}) external`,
+  `function deposit(address token,uint256 plainAmount,${PREDICATE_ATTESTATION_ABI}) external`,
   `function ${GET_ACCOUNT_CORE_SIGNATURE} external view returns ((bool exists, bool finalized, bool pendingAction, uint256 txId, bytes elgamalPubkey, uint64 pendingCreditCounter))`,
   `function ${GET_AVAILABLE_SIGNATURE} external view returns (bytes c1, bytes c2)`,
   `function ${GET_PENDING_SIGNATURE} external view returns (bytes c1, bytes c2)`,
-  `function ${TRANSFER_CONFIDENTIAL_SIGNATURE} external payable`,
-  `function ${WITHDRAW_CONFIDENTIAL_SIGNATURE} external payable`,
-  `function ${APPLY_PENDING_SIGNATURE} external`,
+  `function transferConfidential(address recipient,address token,bytes proof,bool offchainZKP,${PREDICATE_ATTESTATION_ABI}) external payable`,
+  `function withdraw(address token,uint256 plainAmount,bytes proof,bool offchainZKP,${PREDICATE_ATTESTATION_ABI}) external payable`,
+  `function applyPending(${PREDICATE_ATTESTATION_ABI}) external`,
   `function ${FEE_TOKEN_SIGNATURE} external view returns (address)`,
   `function ${FEE_ACCOUNT_SIGNATURE} external view returns (address)`,
   `function ${NON_ANONYMOUS_TRANSFER_FEE_SIGNATURE} external view returns (uint256)`,
@@ -67,7 +77,7 @@ export const STABLETRUST_CONTRACTS_BY_CHAIN_ID = Object.freeze({
   5042002: "0x1B4f05f67CC33788Da4C89a7cd0b2f8E0055E605", //Arc
   84532: "0x4a251C9D79faCa20b193630A4ee313af7cBCDD93", //Base
   11155111: "0x7507a13352AFAa79D33E994f86f2f62463ba8DE4", //Ethereum
-  421614: "0x5acECCdeb5CbD3C727eCB49F8706Eb80EF2f977F", //Arbitrum
+  421614: "0x147C6D8cA1a4784Ed76d98b0E3CcA41C38a49A5f", //Arbitrum Sepolia
   42431: "0xE559fB936C69c46E216bf61B07C16bF1a6d444aa", //Tempo
   42161: "0xCAA6384D5Ac8b9111D482dd676BB890f2b6e9513", //Arbitrum One (mainnet)
 });

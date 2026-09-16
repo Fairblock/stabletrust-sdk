@@ -3,7 +3,7 @@ export {
   ControlledConfidentialTransferClient,
   AnonymousTransferClient,
   WITHDRAW_FEE_PPM_DENOMINATOR,
-} from "./fee-aware-clients.js";
+} from "./predicate-fee-aware-clients.js";
 export { deriveKeys, decryptCiphertext, combineCiphertext } from "./crypto.js";
 export {
   encodeTransferProof,
@@ -14,7 +14,11 @@ export {
 export {
   CONTRACT_ABI,
   ERC20_ABI,
+  PREDICATE_ATTESTATION_SIGNATURE,
+  CREATE_CONFIDENTIAL_ACCOUNT_SIGNATURE,
+  DEPOSIT_SIGNATURE,
   TRANSFER_CONFIDENTIAL_SIGNATURE,
+  APPLY_PENDING_SIGNATURE,
   WITHDRAW_CONFIDENTIAL_SIGNATURE,
   FEE_TOKEN_SIGNATURE,
   FEE_ACCOUNT_SIGNATURE,
@@ -27,4 +31,9 @@ export {
   STABLETRUST_CONTRACTS_BY_CHAIN_ID,
   getStabletrustContractAddress,
 } from "./constants.js";
+export {
+  emptyPredicateAttestation,
+  injectPredicateAttestation,
+  isPredicateAttestation,
+} from "./predicate-contract.js";
 // Note: initializeWasm is now internal - WASM auto-initializes on first client use
