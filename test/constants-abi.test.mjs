@@ -93,8 +93,8 @@ describe("contract ABI signatures", () => {
 
 describe("getStabletrustContractAddress + chain map", () => {
   it("resolves known chains (number or string chainId)", () => {
-    assert.equal(getStabletrustContractAddress(84532), "0x4a251C9D79faCa20b193630A4ee313af7cBCDD93");
-    assert.equal(getStabletrustContractAddress("84532"), "0x4a251C9D79faCa20b193630A4ee313af7cBCDD93");
+    assert.equal(getStabletrustContractAddress(84532), "0xb6cdAE7ccfEE03e351694c63436D5c5c073aEF84");
+    assert.equal(getStabletrustContractAddress("84532"), "0xb6cdAE7ccfEE03e351694c63436D5c5c073aEF84");
     assert.equal(getStabletrustContractAddress(421614), "0x147C6D8cA1a4784Ed76d98b0E3CcA41C38a49A5f");
     assert.equal(getStabletrustContractAddress("421614"), "0x147C6D8cA1a4784Ed76d98b0E3CcA41C38a49A5f");
   });
