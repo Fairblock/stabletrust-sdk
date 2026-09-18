@@ -134,7 +134,7 @@ export class AnonymousTransferClient {
    * Send an HTTP request to Fairycloak. Throws on non-2xx responses.
    * @private
    */
-  async _fetch(method, path, body) {
+  async _fetch(method, path, body, { signal } = {}) {
     const headers = {
       "Content-Type": "application/json",
       Accept: "application/json",
@@ -145,6 +145,7 @@ export class AnonymousTransferClient {
       method,
       headers,
       body: body != null ? JSON.stringify(body) : undefined,
+      signal,
     });
 
     const text = await res.text();
@@ -2254,8 +2255,10 @@ export class AnonymousTransferClient {
    * @param {string} requestId
    * @returns {Promise<Object>}
    */
-  async getRequestStatus(requestId) {
-    return await this._fetch("GET", `/v1/requests/${requestId}`);
+  async getRequestStatus(requestId, { signal } = {}) {
+    return await this._fetch("GET", `/v1/requests/${requestId}`, undefined, {
+      signal,
+    });
   }
 
   /**
@@ -2291,17 +2294,52 @@ export class AnonymousTransferClient {
     requestId,
     { timeoutMs = 120000, pollIntervalMs = 2000 } = {},
   ) {
-    const terminal = new Set(["completed", "confirmed", "failed"]);
-    const cutoff = Date.now() + timeoutMs;
-
-    while (Date.now() < cutoff) {
-      const status = await this.getRequestStatus(requestId);
-      if (terminal.has(status.status)) return status;
-      await new Promise((r) => setTimeout(r, pollIntervalMs));
+    for (const [name, value] of [
+      ["timeoutMs", timeoutMs],
+      ["pollIntervalMs", pollIntervalMs],
+    ]) {
+      if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
+        throw new TypeError(`${name} must be a finite, non-negative number`);
+      }
     }
 
-    throw new Error(
-      `Timeout waiting for Fairycloak request ${requestId} after ${timeoutMs}ms`,
-    );
+    const terminal = new Set(["completed", "confirmed", "failed"]);
+    const cutoff = Date.now() + timeoutMs;
+    const timeoutError = (cause) =>
+      new Error(
+        `Timeout waiting for Fairycloak request ${requestId} after ${timeoutMs}ms`,
+        cause === undefined ? undefined : { cause },
+      );
+
+    while (true) {
+      const remainingBeforeRequest = cutoff - Date.now();
+      if (remainingBeforeRequest <= 0) throw timeoutError();
+
+      const controller = new AbortController();
+      const timer = setTimeout(
+        () => controller.abort(),
+        remainingBeforeRequest,
+      );
+      let status;
+      try {
+        status = await this.getRequestStatus(requestId, {
+          signal: controller.signal,
+        });
+      } catch (error) {
+        if (controller.signal.aborted) throw timeoutError(error);
+        throw error;
+      } finally {
+        clearTimeout(timer);
+      }
+
+      if (Date.now() >= cutoff) throw timeoutError();
+      if (terminal.has(status.status)) return status;
+
+      const remainingBeforePoll = cutoff - Date.now();
+      if (remainingBeforePoll <= 0) throw timeoutError();
+      await new Promise((resolve) =>
+        setTimeout(resolve, Math.min(pollIntervalMs, remainingBeforePoll)),
+      );
+    }
   }
 }
