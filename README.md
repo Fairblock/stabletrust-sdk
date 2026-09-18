@@ -614,7 +614,7 @@ const tokenAddress = "0xYourTokenAddress";
 const tokenDecimals = 6;
 
 // 1. Choose a unique account ID, derive keys, then ensure the account exists
-const accountId = "my-unique-account-id"; // any non-empty string you choose
+const accountId = "myuniqueaccountid"; // alphanumeric and at most 20 characters
 const keys = await client.deriveAnonymousKeys(wallet, accountId);
 await client.ensureAnonymousAccount(wallet, accountId, keys.publicKey);
 
