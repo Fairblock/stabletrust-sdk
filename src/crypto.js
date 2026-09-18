@@ -1,10 +1,41 @@
 import { ethers } from "ethers";
 
 /**
+ * Sign typed key-derivation data with an ethers local wallet.
+ *
+ * Generic Signers may return different valid ECDSA signatures for the same
+ * payload. Since the proof generator uses the signature bytes as key material,
+ * accepting those signers can derive a different ElGamal key on a later call.
+ * BaseWallet exposes a local SigningKey, whose deterministic signer we invoke
+ * directly so the derivation remains stable without a second wallet prompt.
+ *
+ * @param {ethers.BaseWallet} wallet
+ * @param {ethers.TypedDataDomain} domain
+ * @param {Record<string, Array<ethers.TypedDataField>>} types
+ * @param {Record<string, unknown>} message
+ * @returns {string}
+ */
+export function signDeterministicKeyDerivation(wallet, domain, types, message) {
+  if (
+    !wallet ||
+    typeof wallet.getAddress !== "function" ||
+    !wallet.signingKey ||
+    typeof wallet.signingKey.sign !== "function"
+  ) {
+    throw new TypeError(
+      "Deterministic ElGamal key derivation requires an ethers BaseWallet with a local signing key; generic Signer implementations are not supported because their signature bytes may vary between calls.",
+    );
+  }
+
+  const digest = ethers.TypedDataEncoder.hash(domain, types, message);
+  return ethers.Signature.from(wallet.signingKey.sign(digest)).serialized;
+}
+
+/**
  * Derives ElGamal encryption keys deterministically using the user's wallet signature.
  * This ensures that the user's privacy keys stay tied to their Ethereum account.
  *
- * @param {ethers.Wallet} wallet - The wallet to derive keys for
+ * @param {ethers.BaseWallet} wallet - Local wallet used to derive keys
  * @param {Object} config - Configuration object with chainId and contractAddress
  * @param {Function} generateKeypair - The WASM function for key generation
  * @returns {Promise<{publicKey: string, privateKey: string}>}
@@ -38,7 +69,12 @@ export async function deriveKeys(wallet, config, generateKeypair) {
     context: contextHash,
   };
 
-  const signature = await wallet.signTypedData(domain, types, message);
+  const signature = signDeterministicKeyDerivation(
+    wallet,
+    domain,
+    types,
+    message,
+  );
   const domainContext = JSON.stringify({
     chainId: config.chainId.toString(),
     verifyingContract: config.contractAddress,
