@@ -37,16 +37,63 @@ const CREATE_ACCOUNT_INTERFACE = new ethers.Interface([
 ]);
 
 /**
- * Internal helper to parse values as BigInt, handling hex strings and null/undefined.
+ * Parse an unsigned integer returned by Fairycloak without conflating malformed
+ * response data with a legitimate protocol-level zero.
+ *
+ * Missing counters are allowed only for accounts that do not exist yet. Every
+ * present value must be an exact, non-negative integer.
+ *
+ * @param {unknown} value
+ * @param {string} fieldName
+ * @param {{allowMissing?: boolean}} [options]
+ * @returns {bigint}
  * @private
  */
-function _parseBigInt(v) {
-  if (v == null || v === "") return 0n;
-  try {
-    return BigInt(v);
-  } catch {
-    return 0n;
+function _parseUnsignedBigInt(
+  value,
+  fieldName,
+  { allowMissing = false } = {},
+) {
+  const missing =
+    value == null || (typeof value === "string" && value.trim() === "");
+  if (missing) {
+    if (allowMissing) return 0n;
+    throw new Error(
+      `Invalid Fairycloak unsigned integer field "${fieldName}": value is missing`,
+    );
   }
+
+  if (
+    typeof value !== "bigint" &&
+    typeof value !== "string" &&
+    typeof value !== "number"
+  ) {
+    throw new Error(
+      `Invalid Fairycloak unsigned integer field "${fieldName}": received ${typeof value}`,
+    );
+  }
+
+  if (typeof value === "number" && !Number.isSafeInteger(value)) {
+    throw new Error(
+      `Invalid Fairycloak unsigned integer field "${fieldName}": number must be a safe integer`,
+    );
+  }
+
+  let parsed;
+  try {
+    parsed = BigInt(value);
+  } catch {
+    throw new Error(
+      `Invalid Fairycloak unsigned integer field "${fieldName}": value is not an integer`,
+    );
+  }
+
+  if (parsed < 0n) {
+    throw new Error(
+      `Invalid Fairycloak unsigned integer field "${fieldName}": value must be non-negative`,
+    );
+  }
+  return parsed;
 }
 
 /**
@@ -241,14 +288,19 @@ export class AnonymousTransferClient {
         data.result != null && typeof data.result === "object"
           ? data.result
           : data;
+      const exists = r.exists ?? false;
       return {
-        exists: r.exists ?? false,
+        exists,
         finalized: r.finalized ?? false,
         // Fairycloak may use snake_case or camelCase
         hasPendingAction: r.pending_action ?? r.pendingAction ?? false,
-        txId: _parseBigInt(r.tx_id ?? r.txId),
+        txId: _parseUnsignedBigInt(r.tx_id ?? r.txId, "txId", {
+          allowMissing: !exists,
+        }),
         elgamalPubkey: r.elgamal_pubkey ?? r.elgamalPubkey ?? "0x",
-        authNonce: _parseBigInt(r.auth_nonce ?? r.authNonce),
+        authNonce: _parseUnsignedBigInt(r.auth_nonce ?? r.authNonce, "authNonce", {
+          allowMissing: !exists,
+        }),
       };
     } catch (e) {
       throw new Error(`Failed to get anonymous account info: ${e.message}`);
@@ -1702,7 +1754,10 @@ export class AnonymousTransferClient {
   async getAnonymousCreateAccountFee() {
     try {
       const data = await this._fetch("GET", "/v1/views/fees/anonymous-create");
-      return _parseBigInt(data.result ?? data);
+      return _parseUnsignedBigInt(
+        data.result ?? data,
+        "anonymousCreateAccountFee",
+      );
     } catch (e) {
       throw new Error(`Failed to get anonymous create-account fee: ${e.message}`);
     }
@@ -1719,7 +1774,10 @@ export class AnonymousTransferClient {
         "GET",
         "/v1/views/fees/anonymous-minimum-initial-deposit",
       );
-      return _parseBigInt(data.result ?? data);
+      return _parseUnsignedBigInt(
+        data.result ?? data,
+        "anonymousMinimumInitialFeeDeposit",
+      );
     } catch (e) {
       throw new Error(
         `Failed to get anonymous minimum initial fee deposit: ${e.message}`,
@@ -1738,7 +1796,7 @@ export class AnonymousTransferClient {
         "GET",
         "/v1/views/fees/anonymous-update-keys",
       );
-      return _parseBigInt(data.result ?? data);
+      return _parseUnsignedBigInt(data.result ?? data, "anonymousUpdateKeysFee");
     } catch (e) {
       throw new Error(`Failed to get anonymous update-keys fee: ${e.message}`);
     }
@@ -1752,7 +1810,7 @@ export class AnonymousTransferClient {
   async getAnonymousApplyPendingFee() {
     try {
       const data = await this._fetch("GET", "/v1/views/fees/anonymous-apply");
-      return _parseBigInt(data.result ?? data);
+      return _parseUnsignedBigInt(data.result ?? data, "anonymousApplyPendingFee");
     } catch (e) {
       throw new Error(`Failed to get anonymous apply-pending fee: ${e.message}`);
     }
@@ -1769,7 +1827,7 @@ export class AnonymousTransferClient {
         "GET",
         "/v1/views/fees/anonymous-withdraw-ipfs",
       );
-      return _parseBigInt(data.result ?? data);
+      return _parseUnsignedBigInt(data.result ?? data, "anonymousIpfsWithdrawFee");
     } catch (e) {
       throw new Error(`Failed to get anonymous IPFS withdraw fee: ${e.message}`);
     }
@@ -1786,7 +1844,10 @@ export class AnonymousTransferClient {
         "GET",
         "/v1/views/fees/anonymous-withdraw-inline",
       );
-      return _parseBigInt(data.result ?? data);
+      return _parseUnsignedBigInt(
+        data.result ?? data,
+        "anonymousInlineWithdrawFee",
+      );
     } catch (e) {
       throw new Error(
         `Failed to get anonymous inline withdraw fee: ${e.message}`,
@@ -1802,7 +1863,7 @@ export class AnonymousTransferClient {
   async getNonAnonymousTransferFee() {
     try {
       const data = await this._fetch("GET", "/v1/views/fees/non-anonymous");
-      return _parseBigInt(data.result ?? data);
+      return _parseUnsignedBigInt(data.result ?? data, "nonAnonymousTransferFee");
     } catch (e) {
       throw new Error(`Failed to get non-anonymous transfer fee: ${e.message}`);
     }
@@ -1816,7 +1877,7 @@ export class AnonymousTransferClient {
   async getAnonymousIpfsTransferFee() {
     try {
       const data = await this._fetch("GET", "/v1/views/fees/anonymous-ipfs");
-      return _parseBigInt(data.result ?? data);
+      return _parseUnsignedBigInt(data.result ?? data, "anonymousIpfsTransferFee");
     } catch (e) {
       throw new Error(`Failed to get anonymous IPFS transfer fee: ${e.message}`);
     }
@@ -1830,7 +1891,10 @@ export class AnonymousTransferClient {
   async getAnonymousInlineTransferFee() {
     try {
       const data = await this._fetch("GET", "/v1/views/fees/anonymous-inline");
-      return _parseBigInt(data.result ?? data);
+      return _parseUnsignedBigInt(
+        data.result ?? data,
+        "anonymousInlineTransferFee",
+      );
     } catch (e) {
       throw new Error(`Failed to get anonymous inline transfer fee: ${e.message}`);
     }
@@ -1852,7 +1916,7 @@ export class AnonymousTransferClient {
         "GET",
         `/v1/views/anonymous/accounts/${accountId}/prepaid-fees/${token}`,
       );
-      return _parseBigInt(data.result ?? data);
+      return _parseUnsignedBigInt(data.result ?? data, "prepaidFeeBalance");
     } catch (e) {
       throw new Error(`Failed to get prepaid fee balance: ${e.message}`);
     }
