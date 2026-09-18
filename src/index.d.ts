@@ -730,6 +730,40 @@ declare module "@fairblock/stabletrust" {
     fieldName?: string,
   ): void;
 
+  /** Predicate attestation tuple accepted by the upgraded contract ABI. */
+  export type PredicateAttestationTuple = [
+    uuid: string,
+    expiration: bigint | string | number,
+    attester: string,
+    signature: string,
+  ];
+
+  /** Object form accepted by the Predicate compatibility helpers. */
+  export interface PredicateAttestationObject {
+    uuid: string;
+    expiration: bigint | string | number;
+    attester: string;
+    signature: string;
+  }
+
+  export type PredicateAttestation =
+    | PredicateAttestationTuple
+    | PredicateAttestationObject;
+
+  /** Return the disabled-mode attestation used by compatibility wrappers. */
+  export function emptyPredicateAttestation(): PredicateAttestationTuple;
+
+  /** Check whether a value has a supported Predicate attestation shape. */
+  export function isPredicateAttestation(
+    value: unknown,
+  ): value is PredicateAttestation;
+
+  /** Insert an empty attestation into a legacy SDK contract-call argument list. */
+  export function injectPredicateAttestation(
+    methodName: string,
+    args: unknown[],
+  ): unknown[];
+
   /**
    * Constants
    */
@@ -737,7 +771,11 @@ declare module "@fairblock/stabletrust" {
   /**
    * Contract ABI
    */
+  export const PREDICATE_ATTESTATION_SIGNATURE: string;
+  export const CREATE_CONFIDENTIAL_ACCOUNT_SIGNATURE: string;
+  export const DEPOSIT_SIGNATURE: string;
   export const TRANSFER_CONFIDENTIAL_SIGNATURE: string;
+  export const APPLY_PENDING_SIGNATURE: string;
   export const WITHDRAW_CONFIDENTIAL_SIGNATURE: string;
   export const FEE_TOKEN_SIGNATURE: string;
   export const NON_ANONYMOUS_TRANSFER_FEE_SIGNATURE: string;
