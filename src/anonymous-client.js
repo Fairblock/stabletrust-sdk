@@ -7,6 +7,7 @@ import {
   uploadBytesToIpfs,
 } from "./utils.js";
 import { ERC20_ABI, getStabletrustContractAddress } from "./constants.js";
+import { signDeterministicKeyDerivation } from "./crypto.js";
 
 // EIP-712 domain for anonymous operations (LibAnonAuth domain name)
 const ANON_DOMAIN_NAME = "ConfidentialMirrorAnonymous";
@@ -431,7 +432,12 @@ export class AnonymousTransferClient {
         context: contextHash,
       };
 
-      const signature = await authWallet.signTypedData(domain, types, message);
+      const signature = signDeterministicKeyDerivation(
+        authWallet,
+        domain,
+        types,
+        message,
+      );
       const domainContext = JSON.stringify({
         chainId: this.chainId.toString(),
         verifyingContract: this.diamondAddress,

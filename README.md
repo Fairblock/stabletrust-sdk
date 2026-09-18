@@ -184,6 +184,8 @@ console.log("Balance:", ethers.formatUnits(balance.amount, tokenDecimals));
 
 Creates a confidential account on-chain (if one doesn't exist) and waits for finalization. **Must be called before any confidential operation.**
 
+The wallet must be an ethers `BaseWallet` with a local signing key because confidential operations derive a stable ElGamal key from deterministic EIP-712 signature bytes.
+
 - **Returns**: `{ publicKey, privateKey }` — derived ElGamal keypair for this wallet.
 - `options.waitForFinalization` (default `true`) — wait for the account to be finalized.
 - `options.maxAttempts` (default `225`) — maximum polling attempts.
@@ -275,7 +277,7 @@ const client = new AnonymousTransferClient({
 
 ### Key Derivation
 
-Unlinkable accounts use a per-account ElGamal keypair derived from a wallet signature. **Store the returned `privateKey` securely** — it cannot be recovered without the original wallet and account ID.
+Unlinkable accounts use a per-account ElGamal keypair derived from a wallet signature. Key derivation requires an ethers `BaseWallet` with a local signing key; generic or injected `Signer` implementations are rejected because EIP-712 does not guarantee stable signature bytes across calls. **Store the returned `privateKey` securely** — it cannot be recovered without the original wallet and account ID.
 
 ```javascript
 const keys = await client.deriveAnonymousKeys(authWallet, accountId);
