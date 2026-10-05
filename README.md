@@ -70,6 +70,16 @@ The following contract addresses are available for confidential transfers on tes
 | Arbitrum         | 421614   | `0x147C6D8cA1a4784Ed76d98b0E3CcA41C38a49A5f` |
 | Tempo            | 42431    | `0xE559fB936C69c46E216bf61B07C16bF1a6d444aa` |
 
+## Available Confidential Contract Addresses (Mainnet)
+
+The following contract addresses are **live mainnet** deployments:
+
+| Network(Mainnet) | Chain ID | Contract Address                             |
+| :--------------- | :------- | :------------------------------------------- |
+| Arbitrum One     | 42161    | `0xCAA6384D5Ac8b9111D482dd676BB890f2b6e9513` |
+| Base             | 8453     | `0xF90a80eef61e934CF20E5B4fa48FBe9F5fB58aED` |
+| Ethereum         | 1        | `0xa9661635cc97756190973Ef281d4529693EcAcD0` |
+
 ---
 
 ## ConfidentialTransferClient
