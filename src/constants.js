@@ -80,6 +80,8 @@ export const STABLETRUST_CONTRACTS_BY_CHAIN_ID = Object.freeze({
   421614: "0x147C6D8cA1a4784Ed76d98b0E3CcA41C38a49A5f", //Arbitrum Sepolia
   42431: "0xE559fB936C69c46E216bf61B07C16bF1a6d444aa", //Tempo
   42161: "0xCAA6384D5Ac8b9111D482dd676BB890f2b6e9513", //Arbitrum One (mainnet)
+  8453: "0xF90a80eef61e934CF20E5B4fa48FBe9F5fB58aED", //Base (mainnet)
+  1: "0xa9661635cc97756190973Ef281d4529693EcAcD0", //Ethereum (mainnet)
 });
 
 export function getStabletrustContractAddress(chainId) {

@@ -16,6 +16,8 @@ export const CHAIN_KEY_BY_ID = {
   421614: "arbitrumSepolia",
   42431: "tempo",
   42161: "arbitrumOne",
+  8453: "base",
+  1: "ethereum",
 };
 
 /**
