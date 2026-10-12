@@ -2,6 +2,7 @@ import { ethers } from "ethers";
 import {
   CONTRACT_ABI,
   ERC20_ABI,
+  EMPTY_PREDICATE_ATTESTATION,
   TRANSFER_CONFIDENTIAL_SIGNATURE,
   WITHDRAW_CONFIDENTIAL_SIGNATURE,
   FEE_TOKEN_SIGNATURE,
@@ -275,6 +276,10 @@ export class ConfidentialTransferClient {
    * `bytes,bool` proof methods but node_modules still contains the older ABI.
    * @private
    */
+  _predicateAttestation(options = {}) {
+    return options.attestation ?? EMPTY_PREDICATE_ATTESTATION;
+  }
+
   _assertLatestContractAbi() {
     const requiredSignatures = [
       TRANSFER_CONFIDENTIAL_SIGNATURE,
@@ -319,6 +324,49 @@ export class ConfidentialTransferClient {
     const [feeTokenRaw, feeAmountRaw] = await Promise.all([
       this.contract.feeToken(),
       this.contract.nonAnonymousTransferFee(),
+    ]);
+
+    const feeToken = ethers.getAddress(feeTokenRaw);
+    const feeAmount = BigInt(feeAmountRaw);
+
+    if (feeAmount === 0n) {
+      return { value: 0n };
+    }
+
+    if (feeToken === ethers.ZeroAddress) {
+      return { value: feeAmount };
+    }
+
+    const senderAddress = await senderWallet.getAddress();
+    const feeTokenContract = this._getTokenContract(feeToken);
+    const [balance, allowance] = await Promise.all([
+      feeTokenContract.balanceOf(senderAddress),
+      feeTokenContract.allowance(senderAddress, this.config.contractAddress),
+    ]);
+
+    if (balance < feeAmount) {
+      throw new Error(
+        `Insufficient fee token balance. Required: ${feeAmount}, available: ${balance}, fee token: ${feeToken}`,
+      );
+    }
+
+    if (allowance < feeAmount) {
+      const approveTx = await feeTokenContract
+        .connect(senderWallet)
+        .approve(this.config.contractAddress, ethers.MaxUint256);
+      const approveReceipt = await approveTx.wait();
+      if (!approveReceipt || approveReceipt.status === 0) {
+        throw new Error("Fee token approval failed");
+      }
+    }
+
+    return { value: 0n };
+  }
+
+  async _prepareNonAnonymousWithdrawFee(senderWallet) {
+    const [feeTokenRaw, feeAmountRaw] = await Promise.all([
+      this.contract.feeToken(),
+      this.contract.nonAnonymousWithdrawFee(),
     ]);
 
     const feeToken = ethers.getAddress(feeTokenRaw);
@@ -452,7 +500,7 @@ export class ConfidentialTransferClient {
       if (!accountInfo.exists) {
         const tx = await this.contract
           .connect(wallet)
-          .createConfidentialAccount(Buffer.from(keys.publicKey, "base64"));
+          .createConfidentialAccount(Buffer.from(keys.publicKey, "base64"), this._predicateAttestation(options));
 
         const receipt = await tx.wait();
         if (!receipt || receipt.status === 0) {
@@ -683,7 +731,7 @@ export class ConfidentialTransferClient {
       // Perform deposit
       const depositTx = await this.contract
         .connect(wallet)
-        .deposit(tokenAddress, depositAmount, depositOverrides);
+        .deposit(tokenAddress, depositAmount, this._predicateAttestation(options), depositOverrides);
 
       const receipt = await depositTx.wait();
       if (!receipt || receipt.status === 0) {
@@ -867,6 +915,7 @@ export class ConfidentialTransferClient {
         tokenAddress,
         transferZkpArg,
         offchainZKP,
+        this._predicateAttestation(options),
         txOverrides,
       );
 
@@ -1092,6 +1141,8 @@ export class ConfidentialTransferClient {
         BigInt(withdrawAmount),
         withdrawZkpArg,
         offchainZKP,
+        this._predicateAttestation(options),
+        await this._prepareNonAnonymousWithdrawFee(wallet),
       );
 
       const receipt = await tx.wait();
@@ -1155,7 +1206,7 @@ export class ConfidentialTransferClient {
 
       const address = await wallet.getAddress();
 
-      const tx = await this.contract.connect(wallet).applyPending();
+      const tx = await this.contract.connect(wallet).applyPending(this._predicateAttestation(options));
       const receipt = await tx.wait();
 
       if (!receipt || receipt.status === 0) {
