@@ -2,6 +2,15 @@
  * Contract ABIs and Constants
  */
 
+// Accepted by a v2 Predicate Diamond only when enforcement is disabled.
+// Supply a real attestation through options.attestation when enforcement is on.
+export const EMPTY_PREDICATE_ATTESTATION = Object.freeze({
+  uuid: "",
+  expiration: 0n,
+  attester: "0x0000000000000000000000000000000000000000",
+  signature: "0x",
+});
+
 export const PREDICATE_ATTESTATION_SIGNATURE =
   "(string,uint256,address,bytes)";
 const PREDICATE_ATTESTATION_ABI =
@@ -73,6 +82,7 @@ export const ERC20_ABI = [
 export const TEMPO_FEE_TOKEN_ADDRESS =
   "0x20c0000000000000000000000000000000000000";
 export const STABLETRUST_CONTRACTS_BY_CHAIN_ID = Object.freeze({
+  56: "0x6148515C41180c2E5d8E4557C3e01c7F22087288", // BNB Chain mainnet (v2, Predicate disabled)
   2201: "0x0b6791C168ffBF52e82F5E862929Dbf505c3A46E", //Stable
   5042002: "0xA90621B79d49c8E3A5eeEBcaaa839E2f886240C5", //Arc
   84532: "0xb6cdAE7ccfEE03e351694c63436D5c5c073aEF84", //Base
