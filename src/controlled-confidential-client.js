@@ -54,7 +54,7 @@ export class ControlledConfidentialTransferClient extends ConfidentialTransferCl
    * Submit account creation and return immediately after broadcast. The caller
    * owns receipt waiting and contract-state reconciliation.
    */
-  async submitCreateAccount(wallet) {
+  async submitCreateAccount(wallet, options = {}) {
     if (!wallet) throw new Error("Wallet is required");
     const address = await wallet.getAddress();
     const keys = await this._deriveKeys(wallet);
@@ -65,7 +65,7 @@ export class ControlledConfidentialTransferClient extends ConfidentialTransferCl
     const tx = await this._submitWithGasSafety(
       contract,
       "createConfidentialAccount",
-      [Buffer.from(keys.publicKey, "base64")],
+      [Buffer.from(keys.publicKey, "base64"), this._predicateAttestation(options)],
     );
     return { created: true, keys, tx, account };
   }
@@ -74,7 +74,7 @@ export class ControlledConfidentialTransferClient extends ConfidentialTransferCl
    * Submit a deposit without performing an implicit ERC-20 approval. This is
    * intentional for orchestrators: approval is a separate auditable operation.
    */
-  async submitDeposit(wallet, tokenAddress, amount) {
+  async submitDeposit(wallet, tokenAddress, amount, options = {}) {
     if (!wallet) throw new Error("Wallet is required");
     if (!ethers.isAddress(tokenAddress)) throw new Error(`Invalid token address: ${tokenAddress}`);
     const rawAmount = BigInt(amount);
@@ -98,7 +98,7 @@ export class ControlledConfidentialTransferClient extends ConfidentialTransferCl
     return await this._submitWithGasSafety(
       this.contract.connect(wallet),
       "deposit",
-      [tokenAddress, plainAmount],
+      [tokenAddress, plainAmount, this._predicateAttestation(options)],
     );
   }
 
@@ -166,17 +166,18 @@ export class ControlledConfidentialTransferClient extends ConfidentialTransferCl
     return await this._submitWithGasSafety(
       this.contract.connect(wallet),
       "transferConfidential",
-      [recipientAddress, tokenAddress, proofArg, offchainZKP],
+      [recipientAddress, tokenAddress, proofArg, offchainZKP, this._predicateAttestation(options)],
       overrides,
     );
   }
 
   /** Submit an explicit applyPending transaction and return the tx response. */
-  async submitApplyPending(wallet) {
+  async submitApplyPending(wallet, options = {}) {
     if (!wallet) throw new Error("Wallet is required");
     return await this._submitWithGasSafety(
       this.contract.connect(wallet),
       "applyPending",
+      [this._predicateAttestation(options)],
     );
   }
 
@@ -230,7 +231,8 @@ export class ControlledConfidentialTransferClient extends ConfidentialTransferCl
     return await this._submitWithGasSafety(
       this.contract.connect(wallet),
       "withdraw",
-      [tokenAddress, withdrawAmount, proofArg, offchainZKP],
+      [tokenAddress, withdrawAmount, proofArg, offchainZKP, this._predicateAttestation(options)],
+      await this._prepareNonAnonymousWithdrawFee(wallet),
     );
   }
 
@@ -239,7 +241,7 @@ export class ControlledConfidentialTransferClient extends ConfidentialTransferCl
    */
   async createAccount(wallet, options = {}) {
     const { waitForFinalization = true } = options;
-    const submitted = await this.submitCreateAccount(wallet);
+    const submitted = await this.submitCreateAccount(wallet, options);
     if (!submitted.created) {
       let account = submitted.account;
       if (waitForFinalization && !account.finalized) {
