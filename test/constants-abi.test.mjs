@@ -6,6 +6,7 @@ import {
   CONTRACT_ABI,
   ERC20_ABI,
   PREDICATE_ATTESTATION_SIGNATURE,
+  EMPTY_PREDICATE_ATTESTATION,
   CREATE_CONFIDENTIAL_ACCOUNT_SIGNATURE,
   DEPOSIT_SIGNATURE,
   TRANSFER_CONFIDENTIAL_SIGNATURE,
@@ -25,6 +26,12 @@ import {
 
 describe("contract ABI signatures", () => {
   const iface = new ethers.Interface(CONTRACT_ABI);
+
+  it("encodes empty v2 attestation for Predicate-disabled BSC", () => {
+    const args = ["0x" + "11".repeat(32), EMPTY_PREDICATE_ATTESTATION];
+    const encoded = iface.encodeFunctionData(CREATE_CONFIDENTIAL_ACCOUNT_SIGNATURE, args);
+    assert.equal(iface.decodeFunctionData(CREATE_CONFIDENTIAL_ACCOUNT_SIGNATURE, encoded)[1].uuid, "");
+  });
 
   it("declares the upgraded Attestation-bearing non-anonymous signatures", () => {
     assert.equal(PREDICATE_ATTESTATION_SIGNATURE, "(string,uint256,address,bytes)");
@@ -93,6 +100,7 @@ describe("contract ABI signatures", () => {
 
 describe("getStabletrustContractAddress + chain map", () => {
   it("resolves known chains (number or string chainId)", () => {
+    assert.equal(getStabletrustContractAddress(56), "0x6148515C41180c2E5d8E4557C3e01c7F22087288");
     assert.equal(getStabletrustContractAddress(84532), "0xb6cdAE7ccfEE03e351694c63436D5c5c073aEF84");
     assert.equal(getStabletrustContractAddress("84532"), "0xb6cdAE7ccfEE03e351694c63436D5c5c073aEF84");
     assert.equal(getStabletrustContractAddress(421614), "0x147C6D8cA1a4784Ed76d98b0E3CcA41C38a49A5f");
@@ -104,10 +112,10 @@ describe("getStabletrustContractAddress + chain map", () => {
     assert.equal(getStabletrustContractAddress(undefined), null);
   });
 
-  it("covers the nine supported chains", () => {
+  it("covers the ten supported chains", () => {
     assert.deepEqual(
       Object.keys(STABLETRUST_CONTRACTS_BY_CHAIN_ID).map(Number).sort((a, b) => a - b),
-      [1, 2201, 5042002, 42431, 8453, 84532, 42161, 421614, 11155111].sort((a, b) => a - b),
+      [1, 56, 2201, 5042002, 42431, 8453, 84532, 42161, 421614, 11155111].sort((a, b) => a - b),
     );
   });
 
