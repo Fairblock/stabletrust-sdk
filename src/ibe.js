@@ -1,7 +1,7 @@
 import { timelockEncrypt } from "./vendor/ts-ibe/index.js";
 
 const IBE_PUBKEY_URL =
-  "https://anon-testnet-api.fairblock.network/fairyring/keyshare/pubkey";
+  "https://api-mainnet.fairblock.network/fairyring/keyshare/pubkey";
 
 // Bound the IBE public-key fetch. Without this, a slow or hung endpoint (a
 // socket that accepts the connection but never responds) would block the fetch
