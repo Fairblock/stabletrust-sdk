@@ -28,7 +28,11 @@ let wasmModulePromise = null;
 
 function getWasmModule() {
   if (!wasmModulePromise) {
-    wasmModulePromise = initializeWasm();
+    wasmModulePromise = initializeWasm().catch((error) => {
+      // Match the loader's retry behavior after a failed asset load.
+      wasmModulePromise = null;
+      throw error;
+    });
   }
   return wasmModulePromise;
 }
