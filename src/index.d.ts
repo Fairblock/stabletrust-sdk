@@ -256,7 +256,7 @@ declare module "@fairblock/stabletrust" {
      * Tied to (chainId, diamondAddress, accountId, authWallet).
      */
     deriveAnonymousKeys(
-      authWallet: ethers.Wallet | ethers.Signer,
+      authWallet: ethers.BaseWallet,
       accountId: string,
     ): Promise<Keys>;
 
@@ -590,7 +590,7 @@ declare module "@fairblock/stabletrust" {
      * Create a confidential account if it doesn't exist and wait for finalization
      */
     ensureAccount(
-      wallet: ethers.Wallet | ethers.Signer,
+      wallet: ethers.BaseWallet,
       options?: AccountOptions,
     ): Promise<Keys>;
 
@@ -614,7 +614,7 @@ declare module "@fairblock/stabletrust" {
      * @param options Deposit options
      */
     confidentialDeposit(
-      wallet: ethers.Wallet | ethers.Signer,
+      wallet: ethers.BaseWallet,
       tokenAddress: string,
       amount: bigint | string | number,
       options?: ConfidentialDepositOptions,
@@ -630,7 +630,7 @@ declare module "@fairblock/stabletrust" {
      * @param options Transfer options
      */
     confidentialTransfer(
-      senderWallet: ethers.Wallet | ethers.Signer,
+      senderWallet: ethers.BaseWallet,
       recipientAddress: string,
       tokenAddress: string,
       amount: bigint | string | number,
@@ -645,7 +645,7 @@ declare module "@fairblock/stabletrust" {
      * @param options Withdrawal options
      */
     withdraw(
-      wallet: ethers.Wallet | ethers.Signer,
+      wallet: ethers.BaseWallet,
       tokenAddress: string,
       amount: bigint | string | number,
       options?: WithdrawOptions,
@@ -679,7 +679,7 @@ declare module "@fairblock/stabletrust" {
    * Derive encryption keys for a wallet
    */
   export function deriveKeys(
-    wallet: ethers.Wallet | ethers.Signer,
+    wallet: ethers.BaseWallet,
     domainContext: { chainId: number; contractAddress: string },
     generateKeypairFn: (signature: string, context: string) => string,
   ): Promise<Keys>;

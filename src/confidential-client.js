@@ -387,7 +387,7 @@ export class ConfidentialTransferClient {
   /**
    * Derive encryption keys for a wallet
    *
-   * @param {ethers.Wallet|ethers.Signer} wallet - The wallet to derive keys for
+   * @param {ethers.BaseWallet} wallet - Local wallet used to derive keys
    * @returns {Promise<{publicKey: string, privateKey: string}>}
    */
   async _deriveKeys(wallet) {
@@ -435,7 +435,7 @@ export class ConfidentialTransferClient {
   /**
    * Create a confidential account if it doesn't exist and wait for finalization
    *
-   * @param {ethers.Wallet|ethers.Signer} wallet - The wallet to create account for
+   * @param {ethers.BaseWallet} wallet - Local wallet used to create the account
    * @param {Object} [options] - Options
    * @param {boolean} [options.waitForFinalization=true] - Wait for account finalization
    * @param {number} [options.maxAttempts=225] - Max attempts to wait for finalization
@@ -618,7 +618,7 @@ export class ConfidentialTransferClient {
   /**
    * Deposit tokens into confidential account
    *
-   * @param {ethers.Wallet|ethers.Signer} wallet - The wallet to deposit from
+   * @param {ethers.BaseWallet} wallet - Local wallet to deposit from
    * @param {string} tokenAddress - Token address to deposit
    * @param {bigint|string|number} amount - Amount to deposit (in token units)
    * @param {Object} [options] - Options
@@ -727,7 +727,7 @@ export class ConfidentialTransferClient {
   /**
    * Transfer confidential tokens to another address
    *
-   * @param {ethers.Wallet|ethers.Signer} senderWallet - Sender's wallet
+   * @param {ethers.BaseWallet} senderWallet - Sender's local wallet
    * @param {string} recipientAddress - Recipient's address
    * @param {string} tokenAddress - Token address to transfer
    * @param {bigint|string|number} amount - Amount to transfer (in token units)
@@ -972,7 +972,7 @@ export class ConfidentialTransferClient {
   /**
    * Withdraw confidential tokens to public ERC20
    *
-   * @param {ethers.Wallet|ethers.Signer} wallet - The wallet to withdraw from
+   * @param {ethers.BaseWallet} wallet - Local wallet to withdraw from
    * @param {string} tokenAddress - Token address to withdraw
    * @param {bigint|string|number} amount - Amount to withdraw (in token units)
    * @param {Object} [options] - Options
